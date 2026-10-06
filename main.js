@@ -1,7 +1,7 @@
 /* =========================================================
    CODEQUESTER — MAIN GAME
    Three.js r156
-   Works with TrackGenerator.js
+   Works with trackgenerator.js
    CONTROLS
    W / Arrow Up    Accelerate
    S / Arrow Down  Brake / Reverse
@@ -400,10 +400,14 @@
     startPoint
   );
   car.position.y = 0;
+  /*
+    The car drives toward local -Z (see updateCar),
+    so face -Z along the track direction.
+  */
   car.rotation.y =
     Math.atan2(
-      startDirection.x,
-      startDirection.z
+      -startDirection.x,
+      -startDirection.z
     );
   /* =========================================================
      HUD
@@ -1300,47 +1304,3 @@
   updateHUD();
   animate();
 })();
-
-And make sure index.html loads the files in this order
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
-  <meta
-    name="theme-color"
-    content="#02050b"
-  >
-  <title>CodeQuestER</title>
-  <style>
-    html,
-    body {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #02050b;
-    }
-    canvas {
-      display: block;
-    }
-  </style>
-</head>
-<body>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
-  <script src="TrackGenerator.js"></script>
-  <script src="main.js"></script>
-</body>
-</html>
-
-Important: the filename must match exactly:
-
-TrackGenerator.js
-
-If your GitHub file is currently named something else, change the <script> line accordingly.
-
-This version finally connects the pieces: your generated track is the actual game world, rather than the old straight road.
