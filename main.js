@@ -12,6 +12,13 @@
    STEP 1:
    The player is no longer forced to stay on the track.
    The car can freely drive around the generated world.
+   STEP 3 — FREE-LOOK CAMERA
+   CAMERA VIEW button (or C) toggles DRIVE / LOOK.
+   LOOK: drag / swipe the screen, or hold Q E R F.
+   The car keeps driving and is never rotated by the camera.
+   STEP 4 — CITY DISCOVERY
+   Five landmarks on existing city buildings. Drive to them,
+   discover them, and finish the first quest hook.
    ========================================================= */
 (() => {
   "use strict";
@@ -521,6 +528,10 @@
       BOOST: ${boost}
       <br>
       TRACK: ${GAME.trackIndex + 1}/${TRACK_COUNT}
+      <br>
+      DISCOVERED: ${discoveredCount()} / ${LOCATIONS.length}
+      <br>
+      QUEST: ${questHudText()}
       <br><br>
       W / ↑  ACCELERATE
       <br>
@@ -529,6 +540,10 @@
       A / ←  LEFT
       <br>
       D / →  RIGHT
+      <br>
+      C  CAMERA VIEW
+      <br>
+      Q E R F  LOOK
     `;
   }
   /* =========================================================
@@ -760,6 +775,965 @@
   mobile.appendChild(
     controlsRight
   );
+  /* =========================================================
+     STEP 3 — FREE-LOOK CAMERA
+     DRIVE = the existing follow camera (default).
+     LOOK  = same follow camera, but the player can look
+             around independently. The car is never rotated
+             and keeps its normal physics; the camera is an
+             observation system only.
+     ========================================================= */
+  const LOOK = {
+    mode: "DRIVE",
+    /* radians. +yaw looks left, +pitch looks up */
+    yaw: 0,
+    pitch: 0,
+    targetYaw: 0,
+    targetPitch: 0,
+    maxPitch: Math.PI * 0.35,
+    dragYawPerPixel: 0.006,
+    dragPitchPerPixel: 0.005,
+    keyYawSpeed: 1.8,
+    keyPitchSpeed: 1.2,
+    followRate: 12,
+    returnRate: 3,
+    maxReturnSpeed: 5,
+    keys: {
+      left: false,
+      right: false,
+      up: false,
+      down: false
+    },
+    dragPointer: null,
+    lastX: 0,
+    lastY: 0
+  };
+  function wrapAngle(angle) {
+    return Math.atan2(
+      Math.sin(angle),
+      Math.cos(angle)
+    );
+  }
+  /* ---------------------------------------------------------
+     CAMERA VIEW BUTTON + MODE INDICATOR
+     (top-right, clear of the HUD and the driving buttons)
+     --------------------------------------------------------- */
+  const cameraPanel =
+    document.createElement("div");
+  cameraPanel.style.position =
+    "fixed";
+  cameraPanel.style.top =
+    "14px";
+  cameraPanel.style.right =
+    "10px";
+  cameraPanel.style.width =
+    "112px";
+  cameraPanel.style.boxSizing =
+    "border-box";
+  cameraPanel.style.zIndex =
+    "26";
+  cameraPanel.style.fontFamily =
+    "Arial, sans-serif";
+  cameraPanel.style.color =
+    "#ffffff";
+  cameraPanel.style.textAlign =
+    "center";
+  cameraPanel.style.pointerEvents =
+    "none";
+  document.body.appendChild(
+    cameraPanel
+  );
+  const cameraButton =
+    document.createElement("button");
+  cameraButton.type =
+    "button";
+  cameraButton.textContent =
+    "CAMERA VIEW";
+  cameraButton.style.width =
+    "100%";
+  cameraButton.style.height =
+    "40px";
+  cameraButton.style.borderRadius =
+    "10px";
+  cameraButton.style.fontSize =
+    "12px";
+  cameraButton.style.fontWeight =
+    "bold";
+  cameraButton.style.letterSpacing =
+    "0.5px";
+  cameraButton.style.cursor =
+    "pointer";
+  cameraButton.style.touchAction =
+    "manipulation";
+  cameraButton.style.pointerEvents =
+    "auto";
+  cameraPanel.appendChild(
+    cameraButton
+  );
+  const cameraStatus =
+    document.createElement("div");
+  cameraStatus.style.marginTop =
+    "6px";
+  cameraStatus.style.padding =
+    "4px 6px";
+  cameraStatus.style.fontSize =
+    "11px";
+  cameraStatus.style.lineHeight =
+    "1.35";
+  cameraStatus.style.background =
+    "rgba(0,0,0,.55)";
+  cameraStatus.style.borderRadius =
+    "6px";
+  cameraPanel.appendChild(
+    cameraStatus
+  );
+  /* objective readout: nearest / quest location + distance */
+  const objectivePanel =
+    document.createElement("div");
+  objectivePanel.style.marginTop =
+    "6px";
+  objectivePanel.style.padding =
+    "5px 6px";
+  objectivePanel.style.fontSize =
+    "12px";
+  objectivePanel.style.fontWeight =
+    "bold";
+  objectivePanel.style.lineHeight =
+    "1.35";
+  objectivePanel.style.background =
+    "rgba(0,0,0,.55)";
+  objectivePanel.style.border =
+    "1px solid rgba(0,234,255,.35)";
+  objectivePanel.style.borderRadius =
+    "6px";
+  objectivePanel.style.display =
+    "none";
+  cameraPanel.appendChild(
+    objectivePanel
+  );
+  let cameraStatusHTML = "";
+  function updateCameraPanel() {
+    const looking =
+      LOOK.mode === "LOOK";
+    const html =
+      looking
+        ? "CAMERA: LOOK" +
+          "<br><strong style=\"color:#22ff66\">LOOK AROUND</strong>" +
+          "<br>DRAG TO LOOK"
+        : "CAMERA: DRIVE";
+    if (html !== cameraStatusHTML) {
+      cameraStatusHTML = html;
+      cameraStatus.innerHTML = html;
+    }
+    cameraButton.style.border =
+      looking
+        ? "1px solid #22ff66"
+        : "1px solid rgba(0,234,255,.6)";
+    cameraButton.style.background =
+      looking
+        ? "rgba(0,60,30,.85)"
+        : "rgba(0,0,0,.72)";
+    cameraButton.style.color =
+      looking
+        ? "#22ff66"
+        : "#ffffff";
+    cameraButton.setAttribute(
+      "aria-pressed",
+      looking ? "true" : "false"
+    );
+    renderer.domElement.style.cursor =
+      looking ? "grab" : "default";
+  }
+  function setCameraMode(mode) {
+    if (LOOK.mode === mode) {
+      return;
+    }
+    LOOK.mode = mode;
+    LOOK.dragPointer = null;
+    LOOK.keys.left = false;
+    LOOK.keys.right = false;
+    LOOK.keys.up = false;
+    LOOK.keys.down = false;
+    if (mode === "DRIVE") {
+      /*
+        Go home the short way round, then let
+        updateLook() ease the offsets back to 0
+        instead of snapping.
+      */
+      const wrapped =
+        wrapAngle(LOOK.yaw);
+      LOOK.yaw = wrapped;
+      LOOK.targetYaw = 0;
+      LOOK.targetPitch = 0;
+    }
+    updateCameraPanel();
+  }
+  function toggleCameraMode() {
+    setCameraMode(
+      LOOK.mode === "DRIVE"
+        ? "LOOK"
+        : "DRIVE"
+    );
+  }
+  cameraButton.addEventListener(
+    "click",
+    () => {
+      toggleCameraMode();
+      cameraButton.blur();
+    }
+  );
+  /* ---------------------------------------------------------
+     DRAG / SWIPE TO LOOK (mouse, touch and pen)
+     Listens on the game canvas only, so the driving buttons
+     keep working and a second finger can still steer.
+     --------------------------------------------------------- */
+  const lookSurface =
+    renderer.domElement;
+  lookSurface.style.touchAction =
+    "none";
+  lookSurface.addEventListener(
+    "contextmenu",
+    event => {
+      event.preventDefault();
+    }
+  );
+  lookSurface.addEventListener(
+    "pointerdown",
+    event => {
+      if (LOOK.mode !== "LOOK") {
+        return;
+      }
+      if (LOOK.dragPointer !== null) {
+        return;
+      }
+      if (
+        event.pointerType === "mouse" &&
+        event.button !== 0
+      ) {
+        return;
+      }
+      LOOK.dragPointer =
+        event.pointerId;
+      LOOK.lastX =
+        event.clientX;
+      LOOK.lastY =
+        event.clientY;
+      try {
+        lookSurface.setPointerCapture(
+          event.pointerId
+        );
+      } catch (error) {
+        /* capture is optional */
+      }
+      lookSurface.style.cursor =
+        "grabbing";
+      event.preventDefault();
+    }
+  );
+  lookSurface.addEventListener(
+    "pointermove",
+    event => {
+      if (
+        LOOK.mode !== "LOOK" ||
+        event.pointerId !==
+          LOOK.dragPointer
+      ) {
+        return;
+      }
+      const dx =
+        event.clientX - LOOK.lastX;
+      const dy =
+        event.clientY - LOOK.lastY;
+      LOOK.lastX =
+        event.clientX;
+      LOOK.lastY =
+        event.clientY;
+      /*
+        drag left  -> look left   (+yaw)
+        drag right -> look right  (-yaw)
+        drag up    -> look up     (+pitch)
+        drag down  -> look down   (-pitch)
+      */
+      LOOK.targetYaw -=
+        dx * LOOK.dragYawPerPixel;
+      LOOK.targetPitch -=
+        dy * LOOK.dragPitchPerPixel;
+      LOOK.targetPitch =
+        THREE.MathUtils.clamp(
+          LOOK.targetPitch,
+          -LOOK.maxPitch,
+          LOOK.maxPitch
+        );
+      event.preventDefault();
+    }
+  );
+  function endLookDrag(event) {
+    if (
+      event.pointerId !==
+      LOOK.dragPointer
+    ) {
+      return;
+    }
+    LOOK.dragPointer = null;
+    lookSurface.style.cursor =
+      LOOK.mode === "LOOK"
+        ? "grab"
+        : "default";
+  }
+  lookSurface.addEventListener(
+    "pointerup",
+    endLookDrag
+  );
+  lookSurface.addEventListener(
+    "pointercancel",
+    endLookDrag
+  );
+  /* ---------------------------------------------------------
+     KEYBOARD: C toggles, Q/E/R/F look (hold).
+     Separate from the driving key handlers above.
+     --------------------------------------------------------- */
+  window.addEventListener(
+    "keydown",
+    event => {
+      /* leave browser shortcuts (Ctrl+R, Ctrl+F ...) alone */
+      if (
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      const key =
+        event.key.toLowerCase();
+      if (key === "c") {
+        if (!event.repeat) {
+          toggleCameraMode();
+        }
+        return;
+      }
+      if (key === "q") {
+        LOOK.keys.left = true;
+      }
+      if (key === "e") {
+        LOOK.keys.right = true;
+      }
+      if (key === "r") {
+        LOOK.keys.up = true;
+      }
+      if (key === "f") {
+        LOOK.keys.down = true;
+      }
+    }
+  );
+  window.addEventListener(
+    "keyup",
+    event => {
+      const key =
+        event.key.toLowerCase();
+      if (key === "q") {
+        LOOK.keys.left = false;
+      }
+      if (key === "e") {
+        LOOK.keys.right = false;
+      }
+      if (key === "r") {
+        LOOK.keys.up = false;
+      }
+      if (key === "f") {
+        LOOK.keys.down = false;
+      }
+    }
+  );
+  window.addEventListener(
+    "blur",
+    () => {
+      LOOK.keys.left = false;
+      LOOK.keys.right = false;
+      LOOK.keys.up = false;
+      LOOK.keys.down = false;
+      LOOK.dragPointer = null;
+    }
+  );
+  /* ---------------------------------------------------------
+     LOOK UPDATE (called every frame)
+     --------------------------------------------------------- */
+  function updateLook(delta) {
+    if (LOOK.mode === "LOOK") {
+      if (LOOK.keys.left) {
+        LOOK.targetYaw +=
+          LOOK.keyYawSpeed * delta;
+      }
+      if (LOOK.keys.right) {
+        LOOK.targetYaw -=
+          LOOK.keyYawSpeed * delta;
+      }
+      if (LOOK.keys.up) {
+        LOOK.targetPitch +=
+          LOOK.keyPitchSpeed * delta;
+      }
+      if (LOOK.keys.down) {
+        LOOK.targetPitch -=
+          LOOK.keyPitchSpeed * delta;
+      }
+      LOOK.targetPitch =
+        THREE.MathUtils.clamp(
+          LOOK.targetPitch,
+          -LOOK.maxPitch,
+          LOOK.maxPitch
+        );
+      /* horizontal look is free, but keep numbers small */
+      if (
+        Math.abs(LOOK.targetYaw) >
+        Math.PI * 4
+      ) {
+        const shift =
+          Math.round(
+            LOOK.targetYaw /
+            (Math.PI * 2)
+          ) *
+          Math.PI * 2;
+        LOOK.targetYaw -= shift;
+        LOOK.yaw -= shift;
+      }
+    }
+    const returning =
+      LOOK.mode === "DRIVE";
+    const rate =
+      returning
+        ? LOOK.returnRate
+        : LOOK.followRate;
+    const blend =
+      1 - Math.exp(-rate * delta);
+    let stepYaw =
+      (LOOK.targetYaw - LOOK.yaw) *
+      blend;
+    let stepPitch =
+      (LOOK.targetPitch - LOOK.pitch) *
+      blend;
+    if (returning) {
+      /*
+        Ease home at a limited angular speed so
+        a big look angle never whips back.
+      */
+      const maxStep =
+        LOOK.maxReturnSpeed * delta;
+      stepYaw =
+        THREE.MathUtils.clamp(
+          stepYaw,
+          -maxStep,
+          maxStep
+        );
+      stepPitch =
+        THREE.MathUtils.clamp(
+          stepPitch,
+          -maxStep,
+          maxStep
+        );
+    }
+    LOOK.yaw += stepYaw;
+    LOOK.pitch += stepPitch;
+    LOOK.pitch =
+      THREE.MathUtils.clamp(
+        LOOK.pitch,
+        -LOOK.maxPitch,
+        LOOK.maxPitch
+      );
+    if (
+      LOOK.mode === "DRIVE" &&
+      Math.abs(LOOK.yaw) < 0.0005 &&
+      Math.abs(LOOK.pitch) < 0.0005
+    ) {
+      LOOK.yaw = 0;
+      LOOK.pitch = 0;
+    }
+  }
+  updateCameraPanel();
+  /* =========================================================
+     STEP 4 — CITY DISCOVERY
+     Locations sit on EXISTING city buildings from the
+     generator (track.destinations), so no new buildings are
+     created. Each gets one cheap glowing beacon so it can be
+     spotted from far away.
+     NOTE: the names below are only attached to those buildings
+     here — change the table to re-map them.
+     ========================================================= */
+  const LOCATION_DEFS = [
+    {
+      id: "tech_hub",
+      name: "TECH HUB",
+      type: "quest",
+      buildingType: "radio_station"
+    },
+    {
+      id: "garage",
+      name: "GARAGE",
+      type: "garage",
+      buildingType: "auto_shop"
+    },
+    {
+      id: "studio",
+      name: "STUDIO",
+      type: "studio",
+      buildingType: "record_store"
+    },
+    {
+      id: "shop",
+      name: "SHOP",
+      type: "shop",
+      buildingType: "clothing_store"
+    },
+    {
+      id: "office",
+      name: "OFFICE",
+      type: "office",
+      buildingType: "bank"
+    }
+  ];
+  const DISCOVERY = {
+    /* metres from the building footprint */
+    arriveRadius: 45,
+    discoverRadius: 18,
+    questTargetId: "tech_hub",
+    /* "none" -> "active" -> "complete" */
+    questState: "none",
+    beaconHeight: 70,
+    time: 0,
+    queue: [],
+    bannerTimer: 0,
+    bannerGap: 0
+  };
+  const BEACON_COLORS = {
+    undiscovered: 0x00eaff,
+    quest: 0xff2bd6,
+    discovered: 0x22ff66
+  };
+  const LOCATIONS = [];
+  LOCATION_DEFS.forEach(
+    definition => {
+      const building =
+        (track.destinations || [])
+          .find(
+            candidate =>
+              candidate.userData &&
+              candidate.userData
+                .buildingType ===
+                definition.buildingType
+          );
+      if (
+        !building ||
+        !building.geometry ||
+        !building.geometry.parameters
+      ) {
+        console.warn(
+          "CodeQuestER: no building for location " +
+          definition.id
+        );
+        return;
+      }
+      const size =
+        building.geometry.parameters;
+      const beacon =
+        new THREE.Mesh(
+          new THREE.CylinderGeometry(
+            0.7,
+            0.7,
+            DISCOVERY.beaconHeight,
+            8,
+            1,
+            true
+          ),
+          new THREE.MeshBasicMaterial({
+            color:
+              BEACON_COLORS
+                .undiscovered,
+            transparent: true,
+            opacity: 0.55,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            fog: false
+          })
+        );
+      beacon.position.set(
+        building.position.x,
+        size.height +
+          DISCOVERY.beaconHeight / 2,
+        building.position.z
+      );
+      beacon.name =
+        "LocationBeacon_" +
+        definition.id;
+      beacon.userData = {
+        type: "locationBeacon",
+        locationId: definition.id
+      };
+      scene.add(beacon);
+      LOCATIONS.push({
+        id: definition.id,
+        name: definition.name,
+        type: definition.type,
+        position:
+          new THREE.Vector3(
+            building.position.x,
+            0,
+            building.position.z
+          ),
+        halfWidth:
+          size.width / 2,
+        halfDepth:
+          size.depth / 2,
+        discovered: false,
+        beacon
+      });
+    }
+  );
+  /* ---------------------------------------------------------
+     HELPERS (also used by the HUD)
+     --------------------------------------------------------- */
+  function discoveredCount() {
+    let count = 0;
+    for (
+      let i = 0;
+      i < LOCATIONS.length;
+      i++
+    ) {
+      if (LOCATIONS[i].discovered) {
+        count++;
+      }
+    }
+    return count;
+  }
+  function findLocation(id) {
+    for (
+      let i = 0;
+      i < LOCATIONS.length;
+      i++
+    ) {
+      if (LOCATIONS[i].id === id) {
+        return LOCATIONS[i];
+      }
+    }
+    return null;
+  }
+  function questHudText() {
+    if (
+      DISCOVERY.questState ===
+      "active"
+    ) {
+      return "FIND TECH HUB";
+    }
+    if (
+      DISCOVERY.questState ===
+      "complete"
+    ) {
+      return "COMPLETE";
+    }
+    return "NONE";
+  }
+  /*
+    Distance from the car to the edge of the
+    building footprint (0 when inside it).
+  */
+  function distanceToLocation(
+    location
+  ) {
+    const dx =
+      Math.max(
+        Math.abs(
+          car.position.x -
+          location.position.x
+        ) - location.halfWidth,
+        0
+      );
+    const dz =
+      Math.max(
+        Math.abs(
+          car.position.z -
+          location.position.z
+        ) - location.halfDepth,
+        0
+      );
+    return Math.sqrt(
+      dx * dx + dz * dz
+    );
+  }
+  /* ---------------------------------------------------------
+     BANNER (queued, so back-to-back messages never overwrite
+     each other or the existing boost / jump messages)
+     --------------------------------------------------------- */
+  const banner =
+    document.createElement("div");
+  banner.style.position =
+    "fixed";
+  banner.style.left =
+    "50%";
+  banner.style.top =
+    "30%";
+  banner.style.transform =
+    "translate(-50%, -50%)";
+  banner.style.zIndex =
+    "31";
+  banner.style.fontFamily =
+    "Arial, sans-serif";
+  banner.style.color =
+    "#ffffff";
+  banner.style.textAlign =
+    "center";
+  banner.style.textShadow =
+    "0 0 14px #00eaff";
+  banner.style.pointerEvents =
+    "none";
+  banner.style.opacity =
+    "0";
+  banner.style.transition =
+    "opacity 0.25s";
+  const bannerHead =
+    document.createElement("div");
+  bannerHead.style.fontSize =
+    "14px";
+  bannerHead.style.letterSpacing =
+    "3px";
+  bannerHead.style.color =
+    "#00eaff";
+  const bannerBody =
+    document.createElement("div");
+  bannerBody.style.fontSize =
+    "24px";
+  bannerBody.style.fontWeight =
+    "bold";
+  banner.appendChild(bannerHead);
+  banner.appendChild(bannerBody);
+  document.body.appendChild(
+    banner
+  );
+  function enqueueBanner(
+    head,
+    body,
+    seconds
+  ) {
+    DISCOVERY.queue.push({
+      head,
+      body,
+      seconds
+    });
+  }
+  function updateBanner(delta) {
+    if (DISCOVERY.bannerTimer > 0) {
+      DISCOVERY.bannerTimer -=
+        delta;
+      if (
+        DISCOVERY.bannerTimer <= 0
+      ) {
+        banner.style.opacity = "0";
+        DISCOVERY.bannerGap = 0.35;
+      }
+      return;
+    }
+    if (DISCOVERY.bannerGap > 0) {
+      DISCOVERY.bannerGap -= delta;
+      return;
+    }
+    if (DISCOVERY.queue.length > 0) {
+      const next =
+        DISCOVERY.queue.shift();
+      bannerHead.textContent =
+        next.head;
+      bannerBody.textContent =
+        next.body;
+      banner.style.opacity = "1";
+      DISCOVERY.bannerTimer =
+        next.seconds;
+    }
+  }
+  /* ---------------------------------------------------------
+     DISCOVERY + QUEST HOOK
+     DRIVE -> DISCOVER -> QUEST -> COMPLETE
+     --------------------------------------------------------- */
+  function refreshBeaconColors() {
+    for (
+      let i = 0;
+      i < LOCATIONS.length;
+      i++
+    ) {
+      const location =
+        LOCATIONS[i];
+      let color =
+        BEACON_COLORS.undiscovered;
+      if (location.discovered) {
+        color =
+          BEACON_COLORS.discovered;
+      } else if (
+        DISCOVERY.questState ===
+          "active" &&
+        location.id ===
+          DISCOVERY.questTargetId
+      ) {
+        color =
+          BEACON_COLORS.quest;
+      }
+      location.beacon.material
+        .color.setHex(color);
+    }
+  }
+  function completeQuest() {
+    DISCOVERY.questState =
+      "complete";
+    enqueueBanner(
+      "QUEST COMPLETE",
+      "TECH HUB DISCOVERED",
+      3
+    );
+  }
+  function discoverLocation(
+    location
+  ) {
+    location.discovered = true;
+    enqueueBanner(
+      "LOCATION DISCOVERED",
+      location.name,
+      2.4
+    );
+    const questTarget =
+      findLocation(
+        DISCOVERY.questTargetId
+      );
+    if (questTarget) {
+      if (
+        DISCOVERY.questState ===
+        "none"
+      ) {
+        if (
+          location === questTarget
+        ) {
+          /* first find happens to be the Tech Hub */
+          completeQuest();
+        } else {
+          DISCOVERY.questState =
+            "active";
+          enqueueBanner(
+            "NEW QUEST",
+            "Find the Tech Hub.",
+            3
+          );
+        }
+      } else if (
+        DISCOVERY.questState ===
+          "active" &&
+        location === questTarget
+      ) {
+        completeQuest();
+      }
+    }
+    if (
+      discoveredCount() ===
+      LOCATIONS.length
+    ) {
+      enqueueBanner(
+        "CITY DISCOVERY",
+        "ALL LOCATIONS DISCOVERED",
+        3
+      );
+    }
+    refreshBeaconColors();
+  }
+  let objectiveHTML = "";
+  function setObjective(html) {
+    if (html === objectiveHTML) {
+      return;
+    }
+    objectiveHTML = html;
+    objectivePanel.innerHTML =
+      html;
+    objectivePanel.style.display =
+      html ? "block" : "none";
+  }
+  function updateDiscovery(delta) {
+    DISCOVERY.time += delta;
+    /* gentle beacon pulse (undiscovered only) */
+    const pulse =
+      0.45 +
+      0.2 *
+        Math.sin(
+          DISCOVERY.time * 3
+        );
+    let nearest = null;
+    let nearestDistance =
+      Infinity;
+    for (
+      let i = 0;
+      i < LOCATIONS.length;
+      i++
+    ) {
+      const location =
+        LOCATIONS[i];
+      if (location.discovered) {
+        location.beacon.material
+          .opacity = 0.3;
+        continue;
+      }
+      location.beacon.material
+        .opacity = pulse;
+      const distance =
+        distanceToLocation(
+          location
+        );
+      if (
+        distance <=
+        DISCOVERY.discoverRadius
+      ) {
+        discoverLocation(location);
+        continue;
+      }
+      if (
+        distance < nearestDistance
+      ) {
+        nearestDistance = distance;
+        nearest = location;
+      }
+    }
+    /*
+      Objective readout: the quest target while
+      the quest is active, otherwise the nearest
+      undiscovered location.
+    */
+    let target = nearest;
+    if (
+      DISCOVERY.questState ===
+      "active"
+    ) {
+      const questTarget =
+        findLocation(
+          DISCOVERY.questTargetId
+        );
+      if (
+        questTarget &&
+        !questTarget.discovered
+      ) {
+        target = questTarget;
+      }
+    }
+    if (
+      target &&
+      !target.discovered
+    ) {
+      const distance =
+        distanceToLocation(target);
+      const text =
+        distance <=
+        DISCOVERY.arriveRadius
+          ? "ARRIVING"
+          : Math.round(distance) +
+            "m";
+      setObjective(
+        target.name +
+        "<br>" +
+        text
+      );
+    } else {
+      setObjective("");
+    }
+    updateBanner(delta);
+  }
+  refreshBeaconColors();
   /* =========================================================
      FIND CLOSEST TRACK POINT
      =========================================================
@@ -1214,6 +2188,71 @@
     new THREE.Vector3();
   const cameraTarget =
     new THREE.Vector3();
+  /*
+    FREE-LOOK: rotate the existing driving view
+    by the player's look yaw / pitch. In DRIVE
+    mode both offsets settle at 0, so the normal
+    driving camera is unchanged.
+  */
+  function applyLookOffset() {
+    if (
+      Math.abs(LOOK.yaw) < 0.0001 &&
+      Math.abs(LOOK.pitch) < 0.0001
+    ) {
+      return;
+    }
+    const dx =
+      cameraTarget.x -
+      camera.position.x;
+    const dy =
+      cameraTarget.y -
+      camera.position.y;
+    const dz =
+      cameraTarget.z -
+      camera.position.z;
+    const length =
+      Math.sqrt(
+        dx * dx +
+        dy * dy +
+        dz * dz
+      ) || 1;
+    /*
+      Yaw 0 = looking along -Z, positive yaw
+      turns toward -X (the player's left).
+    */
+    const baseYaw =
+      Math.atan2(-dx, -dz);
+    const basePitch =
+      Math.asin(
+        THREE.MathUtils.clamp(
+          dy / length,
+          -1,
+          1
+        )
+      );
+    const yaw =
+      baseYaw + LOOK.yaw;
+    /*
+      Never reach straight up / down, so the
+      camera cannot flip upside down.
+    */
+    const pitch =
+      THREE.MathUtils.clamp(
+        basePitch + LOOK.pitch,
+        -1.4,
+        1.4
+      );
+    const flat =
+      Math.cos(pitch);
+    cameraTarget.set(
+      camera.position.x -
+        Math.sin(yaw) * flat * length,
+      camera.position.y +
+        Math.sin(pitch) * length,
+      camera.position.z -
+        Math.cos(yaw) * flat * length
+    );
+  }
   function updateCamera() {
     const forward =
       new THREE.Vector3(
@@ -1246,6 +2285,7 @@
     );
     cameraTarget.y +=
       1;
+    applyLookOffset();
     camera.lookAt(
       cameraTarget
     );
@@ -1309,6 +2349,8 @@
     updateJump();
     checkInteractiveObjects();
     updateLap();
+    updateDiscovery(delta);
+    updateLook(delta);
     updateCamera();
     updateMessage(delta);
     updateHUD();
