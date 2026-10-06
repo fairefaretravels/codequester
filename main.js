@@ -1,7 +1,7 @@
 /* =========================================================
    CODEQUESTER — MAIN GAME
    Three.js r156
-   Works with trackgenerator.js
+   FREE DRIVING BUILD
    CONTROLS
    W / Arrow Up    Accelerate
    S / Arrow Down  Brake / Reverse
@@ -9,6 +9,9 @@
    D / Arrow Right Steer
    MOBILE
    On-screen steering + throttle/brake
+   STEP 1:
+   The player is no longer forced to stay on the track.
+   The car can freely drive around the generated world.
    ========================================================= */
 (() => {
   "use strict";
@@ -44,7 +47,8 @@
   /* =========================================================
      SCENE
      ========================================================= */
-  const scene = new THREE.Scene();
+  const scene =
+    new THREE.Scene();
   scene.background =
     new THREE.Color(0x02050b);
   scene.fog =
@@ -115,14 +119,22 @@
     40
   );
   sun.castShadow = true;
-  sun.shadow.mapSize.width = 2048;
-  sun.shadow.mapSize.height = 2048;
-  sun.shadow.camera.left = -180;
-  sun.shadow.camera.right = 180;
-  sun.shadow.camera.top = 180;
-  sun.shadow.camera.bottom = -180;
-  sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 400;
+  sun.shadow.mapSize.width =
+    2048;
+  sun.shadow.mapSize.height =
+    2048;
+  sun.shadow.camera.left =
+    -180;
+  sun.shadow.camera.right =
+    180;
+  sun.shadow.camera.top =
+    180;
+  sun.shadow.camera.bottom =
+    -180;
+  sun.shadow.camera.near =
+    1;
+  sun.shadow.camera.far =
+    400;
   scene.add(sun);
   /* =========================================================
      TRACK GENERATOR
@@ -175,7 +187,8 @@
       bodyGeometry,
       bodyMaterial
     );
-  body.position.y = 0.65;
+  body.position.y =
+    0.65;
   body.castShadow = true;
   car.add(body);
   /* ---------------------------------------------------------
@@ -291,9 +304,9 @@
     1.35,
     false
   );
-  /* ---------------------------------------------------------
+  /* =========================================================
      HEADLIGHTS
-     --------------------------------------------------------- */
+     ========================================================= */
   function createHeadlight(x) {
     const geometry =
       new THREE.BoxGeometry(
@@ -382,14 +395,12 @@
         (index + 1) %
         TRACK_COUNT
       ];
-    const direction =
-      new THREE.Vector3()
-        .subVectors(
-          next,
-          current
-        )
-        .normalize();
-    return direction;
+    return new THREE.Vector3()
+      .subVectors(
+        next,
+        current
+      )
+      .normalize();
   }
   const startIndex = 0;
   const startPoint =
@@ -401,8 +412,9 @@
   );
   car.position.y = 0;
   /*
-    The car drives toward local -Z (see updateCar),
-    so face -Z along the track direction.
+    The car drives toward local -Z,
+    so face -Z along the starting
+    track direction.
   */
   car.rotation.y =
     Math.atan2(
@@ -481,7 +493,8 @@
       text;
     message.style.opacity =
       "1";
-    messageTimer = 1.8;
+    messageTimer =
+      1.8;
   }
   /* =========================================================
      HUD UPDATE
@@ -489,7 +502,8 @@
   function updateHUD() {
     const mph =
       Math.round(
-        Math.abs(GAME.speed) * 145
+        Math.abs(GAME.speed) *
+        145
       );
     const boost =
       GAME.boostTimer > 0
@@ -537,25 +551,29 @@
         key === "w" ||
         key === "arrowup"
       ) {
-        GAME.keys.forward = true;
+        GAME.keys.forward =
+          true;
       }
       if (
         key === "s" ||
         key === "arrowdown"
       ) {
-        GAME.keys.backward = true;
+        GAME.keys.backward =
+          true;
       }
       if (
         key === "a" ||
         key === "arrowleft"
       ) {
-        GAME.keys.left = true;
+        GAME.keys.left =
+          true;
       }
       if (
         key === "d" ||
         key === "arrowright"
       ) {
-        GAME.keys.right = true;
+        GAME.keys.right =
+          true;
       }
     }
   );
@@ -568,25 +586,29 @@
         key === "w" ||
         key === "arrowup"
       ) {
-        GAME.keys.forward = false;
+        GAME.keys.forward =
+          false;
       }
       if (
         key === "s" ||
         key === "arrowdown"
       ) {
-        GAME.keys.backward = false;
+        GAME.keys.backward =
+          false;
       }
       if (
         key === "a" ||
         key === "arrowleft"
       ) {
-        GAME.keys.left = false;
+        GAME.keys.left =
+          false;
       }
       if (
         key === "d" ||
         key === "arrowright"
       ) {
-        GAME.keys.right = false;
+        GAME.keys.right =
+          false;
       }
     }
   );
@@ -621,7 +643,9 @@
     action
   ) {
     const button =
-      document.createElement("button");
+      document.createElement(
+        "button"
+      );
     button.textContent =
       label;
     button.style.width =
@@ -674,18 +698,22 @@
     makeButton(
       "LEFT",
       value => {
-        GAME.keys.left = value;
+        GAME.keys.left =
+          value;
       }
     );
   const rightButton =
     makeButton(
       "RIGHT",
       value => {
-        GAME.keys.right = value;
+        GAME.keys.right =
+          value;
       }
     );
   const controlsLeft =
-    document.createElement("div");
+    document.createElement(
+      "div"
+    );
   controlsLeft.style.display =
     "flex";
   controlsLeft.style.gap =
@@ -697,7 +725,9 @@
     rightButton
   );
   const controlsRight =
-    document.createElement("div");
+    document.createElement(
+      "div"
+    );
   controlsRight.style.display =
     "flex";
   controlsRight.style.gap =
@@ -706,14 +736,16 @@
     makeButton(
       "BRAKE",
       value => {
-        GAME.keys.backward = value;
+        GAME.keys.backward =
+          value;
       }
     );
   const gasButton =
     makeButton(
       "GAS",
       value => {
-        GAME.keys.forward = value;
+        GAME.keys.forward =
+          value;
       }
     );
   controlsRight.appendChild(
@@ -730,13 +762,23 @@
   );
   /* =========================================================
      FIND CLOSEST TRACK POINT
+     =========================================================
+     IMPORTANT:
+     This no longer controls the car's
+     physical position.
+     It is informational only.
+     The player is free to leave
+     the road and explore the world.
      ========================================================= */
   function findClosestWaypoint() {
-    let closest = GAME.trackIndex;
-    let closestDistance = Infinity;
+    let closest =
+      GAME.trackIndex;
+    let closestDistance =
+      Infinity;
     /*
-      Search locally rather than checking every
-      waypoint every frame.
+      Search locally rather than
+      checking every waypoint
+      every frame.
     */
     const searchRadius = 35;
     for (
@@ -795,8 +837,8 @@
         0.14
       );
     /*
-      Steering gets slightly stronger
-      at higher speed.
+      Steering gets slightly
+      stronger at higher speed.
     */
     const speedFactor =
       THREE.MathUtils.clamp(
@@ -846,7 +888,8 @@
           GAME.braking;
       } else {
         GAME.speed -=
-          GAME.acceleration * 0.6;
+          GAME.acceleration *
+          0.6;
       }
     }
     /* -------------------------------------------------------
@@ -898,6 +941,13 @@
     updateSteering();
     /* -------------------------------------------------------
        MOVE CAR
+       -------------------------------------------------------
+       FREE DRIVING ENABLED.
+       There is intentionally NO code here
+       that pulls the vehicle back toward
+       the generated road.
+       The car can now travel anywhere
+       on the generated world floor.
        ------------------------------------------------------- */
     const forward =
       new THREE.Vector3(
@@ -925,57 +975,16 @@
        DISTANCE
        ------------------------------------------------------- */
     GAME.distance +=
-      Math.abs(GAME.speed);
+      Math.abs(
+        GAME.speed
+      );
     /* -------------------------------------------------------
-       FIND TRACK POSITION
+       TRACK POSITION
+       -------------------------------------------------------
+       Informational only.
+       This does NOT restrict movement.
        ------------------------------------------------------- */
     findClosestWaypoint();
-    /* -------------------------------------------------------
-       KEEP CAR NEAR TRACK
-       ------------------------------------------------------- */
-    const closest =
-      waypoints[
-        GAME.trackIndex
-      ];
-    const dx =
-      car.position.x -
-      closest.x;
-    const dz =
-      car.position.z -
-      closest.z;
-    const distanceFromTrack =
-      Math.sqrt(
-        dx * dx +
-        dz * dz
-      );
-    /*
-      If the player gets far off the
-      generated road, gently pull them
-      back toward the track.
-      This keeps the game playable
-      without an invisible hard wall.
-    */
-    if (
-      distanceFromTrack >
-      ROAD_WIDTH * 1.25
-    ) {
-      const correction =
-        new THREE.Vector3(
-          closest.x -
-            car.position.x,
-          0,
-          closest.z -
-            car.position.z
-        );
-      correction.normalize();
-      car.position.addScaledVector(
-        correction,
-        Math.min(
-          distanceFromTrack * 0.025,
-          0.45
-        )
-      );
-    }
   }
   /* =========================================================
      ZONE DETECTION
@@ -1116,7 +1125,8 @@
         break;
     }
     /*
-      Flash the car with the zone color.
+      Flash the car with
+      the zone color.
     */
     const original =
       bodyMaterial.color.getHex();
@@ -1172,8 +1182,14 @@
     const current =
       GAME.trackIndex;
     /*
-      Detect crossing from the end of
-      the waypoint array back to the beginning.
+      Detect crossing from the
+      end of the waypoint array
+      back to the beginning.
+      NOTE:
+      Because free driving is now
+      enabled, lap detection is only
+      meaningful when the player is
+      actually driving around the track.
     */
     if (
       GAME.lastTrackIndex >
