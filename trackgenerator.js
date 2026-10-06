@@ -1888,9 +1888,8 @@ class TrackGenerator {
 
     this.buildCitySidewalks();
 
+    /* Parking lots are built per block inside buildCityBlocks() */
     this.buildCityBlocks();
-
-    this.buildParkingLots();
 
     this.buildDestinations();
 
