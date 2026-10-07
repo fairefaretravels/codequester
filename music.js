@@ -600,6 +600,50 @@
     playSongPreview,
     playFullSong,
     stopAll,
+     /* ---------------------------------------------------------
+   RADIO TOGGLE
+   If music is playing, pause it.
+   If a song is currently selected, resume it.
+   --------------------------------------------------------- */
+function toggle() {
+  if (!player) {
+    return false;
+  }
+
+  if (!player.paused) {
+    player.pause();
+    emit("cq:music-paused", nowPlaying);
+    return false;
+  }
+
+  if (nowPlaying) {
+    const result = player.play();
+
+    if (
+      result &&
+      typeof result.then === "function"
+    ) {
+      return result.then(
+        () => {
+          emit("cq:music-resumed", nowPlaying);
+          return true;
+        },
+        error => {
+          console.warn(
+            "CodeQuestER: resume blocked",
+            error
+          );
+          return false;
+        }
+      );
+    }
+
+    emit("cq:music-resumed", nowPlaying);
+    return true;
+  }
+
+  return false;
+}
     getNowPlaying
   };
 })();
