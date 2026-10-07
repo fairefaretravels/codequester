@@ -25,7 +25,7 @@
 (() => {
   "use strict";
 
-  const IMAGES = "assets/photos/";
+  const PHOTOS = "assets/photos/";
 
   const ASSET = {
     cq1: PHOTOS + "cq1.jpg",
