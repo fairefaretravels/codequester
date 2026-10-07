@@ -544,6 +544,8 @@
       C  CAMERA VIEW
       <br>
       Q E R F  LOOK
+      <br>
+      M  RADIO   N  NEXT
     `;
   }
   /* =========================================================
@@ -775,6 +777,13 @@
   mobile.appendChild(
     controlsRight
   );
+  /* Exposed for drivercontrols.js (steering wheel + radio). */
+  GAME.analogSteer = null;
+  GAME.ui = {
+    mobile,
+    steerButtons: controlsLeft
+  };
+  window.CQGame = GAME;
   /* =========================================================
      STEP 3 — FREE-LOOK CAMERA
      DRIVE = the existing follow camera (default).
@@ -1802,6 +1811,16 @@
     if (GAME.keys.right) {
       input += 1;
     }
+    /* On-screen steering wheel (drivercontrols.js) sets this to a
+       number from -1 (full left) to +1 (full right) while in use,
+       and back to null when idle so the keys work as before. */
+    if (typeof GAME.analogSteer === "number") {
+      input = THREE.MathUtils.clamp(
+        GAME.analogSteer,
+        -1,
+        1
+      );
+    }
     GAME.steeringTarget =
       input;
     GAME.steering =
@@ -1829,7 +1848,9 @@
       Rotate the vehicle around
       its own vertical axis.
     */
-    car.rotation.y +=
+    /* Car faces local -Z, so +rotation.y turns LEFT.
+       steering is +1 = right, so subtract. */
+    car.rotation.y -=
       steeringAmount;
     /*
       Front wheel visual steering.
@@ -1837,7 +1858,7 @@
     frontWheels.forEach(
       wheel => {
         wheel.rotation.y =
-          GAME.steering *
+          -GAME.steering *
           0.45;
       }
     );
