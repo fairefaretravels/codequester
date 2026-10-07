@@ -28,10 +28,10 @@
   const IMAGES = "assets/images/";
 
   const ASSET = {
-    cq1: IMAGES + "cq1.jpg",
-    cq2: IMAGES + "cq2.jpg",
-    theStaticGif: IMAGES + "TheStatic.gif",
-    theStaticPng: IMAGES + "thestatic.PNG",
+    cq1: PHOTOS + "cq1.jpg",
+    cq2: PHOTOS + "cq2.jpg",
+    theStaticGif: PHOTOS + "TheStatic.gif",
+    theStaticPng: PHOTOS + "thestatic.PNG",
     /* optional: drop an equirectangular image here to replace
        the generated night-sky gradient */
     skybox: "assets/city/skybox.jpg"
