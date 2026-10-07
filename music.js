@@ -560,115 +560,137 @@
       }
     );
   }
+    /* ---------------------------------------------------------
+     RADIO TOGGLE
+     If music is playing, pause it.
+     If a song is currently selected, resume it.
+     --------------------------------------------------------- */
+  function toggle() {
+    /*
+       No audio element exists yet.
+       The first actual play must come from
+       playSongPreview() or playFullSong().
+    */
+    if (!player) {
+      return false;
+    }
+
+    /*
+       Currently playing -> pause.
+    */
+    if (!player.paused) {
+      player.pause();
+
+      emit(
+        "cq:music-paused",
+        nowPlaying
+      );
+
+      return false;
+    }
+
+    /*
+       Paused with a current song -> resume.
+    */
+    if (nowPlaying) {
+      const result = player.play();
+
+      if (
+        result &&
+        typeof result.then === "function"
+      ) {
+        return result.then(
+          () => {
+            emit(
+              "cq:music-resumed",
+              nowPlaying
+            );
+
+            return true;
+          },
+          error => {
+            console.warn(
+              "CodeQuestER: resume blocked",
+              error
+            );
+
+            return false;
+          }
+        );
+      }
+
+      emit(
+        "cq:music-resumed",
+        nowPlaying
+      );
+
+      return true;
+    }
+
+    /*
+       Nothing has ever been selected.
+       Do not create audio or start anything automatically.
+    */
+    return false;
+  }
+
   /* ---------------------------------------------------------
      CURRENTLY PLAYING
      --------------------------------------------------------- */
   function getNowPlaying() {
     return nowPlaying;
   }
+
   /* ---------------------------------------------------------
      EXPOSE PUBLIC API
      --------------------------------------------------------- */
   window.CQMusic = {
+
     /*
        Catalog
     */
     catalog: MUSIC_CATALOG,
+
     /*
        Economy
     */
     START_CASH,
+
     /*
        Game binding
     */
     bind,
+
     /*
        Catalog queries
     */
     getCatalog,
     getSong,
     getSongUI,
+
     /*
        Player economy / ownership
     */
     getCash,
     hasSong,
     buySong,
+
     /*
        Audio
     */
     playSongPreview,
     playFullSong,
     stopAll,
-     /* ---------------------------------------------------------
-   RADIO TOGGLE
-   If music is playing, pause it.
-   If a song is currently selected, resume it.
-   --------------------------------------------------------- */
-function toggle() {
-  if (!player) {
-    return false;
-  }
 
-  if (!player.paused) {
-    player.pause();
-    emit("cq:music-paused", nowPlaying);
-    return false;
-  }
+    /*
+       Radio
+    */
+    toggle,
 
-  if (nowPlaying) {
-    const result = player.play();
-
-    if (
-      result &&
-      typeof result.then === "function"
-    ) {
-      return result.then(
-        () => {
-          emit("cq:music-resumed", nowPlaying);
-          return true;
-        },
-        error => {
-          console.warn(
-            "CodeQuestER: resume blocked",
-            error
-          );
-          return false;
-        }
-      );
-    }
-
-    emit("cq:music-resumed", nowPlaying);
-    return true;
-  }
-
-  return false;
-}
+    /*
+       Current playback
+    */
     getNowPlaying
   };
+
 })();
-
-The catalog now contains these 13 tracks:
-
-1. Collect The Vibe
-2. 4 X 4
-3. Throwback
-4. All Dat Ass
-5. Baby Tonight
-6. Drive Me
-7. Dust On The Subwoofer
-8. Eighteen And A Clutch
-9. All I Have In This World
-10. God’s Favorite
-11. TRY
-12. I Need You
-13. White Smoke
-
-And the four new files are referenced exactly as:
-
-assets/music/godsfavorite.mp3
-assets/music/try.mp3
-assets/music/ineedyou.mp3
-assets/music/whitesmoke.mp3
-
-I also kept God’s Favorite → Cozumel, TRY → Las Vegas, and I Need You → Salt Lake City from your CodeQuestER city/music mapping.
