@@ -29,7 +29,7 @@
 
   const ASSET = {
     cq1: PHOTOS + "cq1.jpg",
-    cq2: PHOTOS + "cq2.jpg",
+    cq2: PHOTOS + "scq2.jpg",
     theStaticGif: PHOTOS + "TheStatic.gif",
     theStaticPng: PHOTOS + "thestatic.PNG",
     /* optional: drop an equirectangular image here to replace
