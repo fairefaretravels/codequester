@@ -24,10 +24,19 @@
   "use strict";
 
   /* STEERING DIRECTION
-     -1 = flipped (matches the "left/right inverted" report)
-      1 = original
-     If steering feels backwards, change only this number. */
-  const STEER_SIGN = -1;
+     Tap the STEER button (top-right) or press T to flip
+     left/right. The choice is saved in this browser. */
+  const STEER_KEY = "codequester.steerSign.v1";
+  let steerSign = -1;
+
+  try {
+    const saved = window.localStorage.getItem(STEER_KEY);
+    if (saved === "1" || saved === "-1") {
+      steerSign = Number(saved);
+    }
+  } catch (error) {
+    /* storage blocked: the toggle still works for this session */
+  }
 
   /* =========================================================
      GAME STATE
@@ -542,6 +551,51 @@
     toggleCameraMode();
     cameraButton.blur();
   });
+
+  /* STEER toggle: flips left/right for keys, buttons and wheel */
+  const steerButton = document.createElement("button");
+  steerButton.type = "button";
+  steerButton.style.cssText =
+    "width:100%;height:30px;margin-top:6px;border-radius:8px;" +
+    "font-size:11px;font-weight:bold;letter-spacing:.5px;cursor:pointer;" +
+    "touch-action:manipulation;pointer-events:auto;color:#fff;" +
+    "background:rgba(0,0,0,.72);border:1px solid rgba(0,234,255,.6);";
+  cameraPanel.insertBefore(steerButton, cameraStatus);
+
+  function updateSteerButton() {
+    steerButton.textContent =
+      steerSign === 1 ? "STEER: NORMAL" : "STEER: FLIPPED";
+  }
+
+  function toggleSteerSign() {
+    steerSign = -steerSign;
+    try {
+      window.localStorage.setItem(STEER_KEY, String(steerSign));
+    } catch (error) {
+      /* session only */
+    }
+    updateSteerButton();
+    showMessage(steerSign === 1 ? "STEERING: NORMAL" : "STEERING: FLIPPED");
+  }
+
+  steerButton.addEventListener("click", () => {
+    toggleSteerSign();
+    steerButton.blur();
+  });
+
+  window.addEventListener("keydown", event => {
+    if (
+      event.key.toLowerCase() === "t" &&
+      !event.repeat &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      toggleSteerSign();
+    }
+  });
+
+  updateSteerButton();
 
   /* drag / swipe to look (canvas only, so driving buttons
      keep working and a second finger can still steer) */
@@ -1075,13 +1129,13 @@
       GAME.steering * GAME.steeringPower * speedFactor * k;
 
     /* The car faces local -Z, so +rotation.y turns LEFT and
-       steering +1 means right. STEER_SIGN (top of file) flips
-       the result if it ever looks backwards on screen. */
-    car.rotation.y -= steeringAmount * STEER_SIGN;
+       steering +1 means right. steerSign (top of file, toggled in game)
+       flips the result if it looks backwards on screen. */
+    car.rotation.y -= steeringAmount * steerSign;
 
     /* front wheel visual steering */
     frontWheels.forEach(wheel => {
-      wheel.rotation.y = -GAME.steering * 0.45 * STEER_SIGN;
+      wheel.rotation.y = -GAME.steering * 0.45 * steerSign;
     });
   }
 
