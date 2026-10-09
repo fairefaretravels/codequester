@@ -1,13 +1,16 @@
 /* =========================================================
    CODEQUESTER — TAPE DECK
-   Plain script (no ES modules). Load AFTER music.js.
-   A small in-game player that lists every song in the
-   CQMusic catalog. Free play for now (music.js FREE_PLAY).
+   Plain script (no ES modules).
+   Load order: music.js, main.js, drivercontrols.js, tapedeck.js
+
+   A small in-game player listing every song in the CQMusic
+   catalog. Free play for now (see FREE_PLAY in music.js).
    Tap the list button to open the tracklist, tap a song to
    play it. Prev / play-pause / next on the bar. Songs
    auto-advance when one ends.
-   No keyboard shortcuts are bound here, so it can't fight
-   with the driving keys.
+
+   Keys M (play/pause) and N (next) are wired in
+   drivercontrols.js through window.CQTapeDeck.
    ========================================================= */
 (() => {
   "use strict";
@@ -22,8 +25,13 @@
   const CYAN = "rgba(0,234,255,.6)";
   const GREEN = "#22ff66";
 
-  let current = -1;          // index into songs
-  let state = "stopped";     // "stopped" | "playing" | "paused"
+  /* Sit above the steering wheel when drivercontrols.js built one. */
+  const game = window.CQGame;
+  const wheelUp = !!(game && game.ui && game.ui.wheelOn);
+  const BOTTOM = wheelUp ? 174 : 92;
+
+  let current = -1;        /* index into songs */
+  let state = "stopped";   /* "stopped" | "playing" | "paused" */
   let open = false;
   let notice = "";
   let noticeTimer = null;
@@ -31,8 +39,12 @@
 
   function el(tag, css, text) {
     const node = document.createElement(tag);
-    if (css) node.style.cssText = css;
-    if (text !== undefined) node.textContent = text;
+    if (css) {
+      node.style.cssText = css;
+    }
+    if (text !== undefined) {
+      node.textContent = text;
+    }
     return node;
   }
 
@@ -41,9 +53,10 @@
      --------------------------------------------------------- */
   const root = el(
     "div",
-    "position:fixed;left:50%;bottom:92px;transform:translateX(-50%);" +
-    "width:min(330px,calc(100vw - 24px));box-sizing:border-box;" +
-    "z-index:27;font-family:Arial,sans-serif;color:#fff;"
+    "position:fixed;left:50%;bottom:" + BOTTOM + "px;" +
+    "transform:translateX(-50%);width:min(330px,calc(100vw - 24px));" +
+    "box-sizing:border-box;z-index:27;font-family:Arial,sans-serif;" +
+    "color:#fff;"
   );
 
   const list = el(
@@ -73,18 +86,18 @@
     button.setAttribute("aria-label", title);
     button.addEventListener("click", () => {
       handler();
-      button.blur(); /* keep Space / Enter from re-triggering it while driving */
+      button.blur(); /* keep Space / Enter from re-triggering while driving */
     });
     return button;
   }
 
-  const listButton = makeButton("☰", "Tracklist", () => {
+  const listButton = makeButton("\u2630", "Tracklist", () => {
     open = !open;
     render();
   });
-  const prevButton = makeButton("⏮", "Previous", () => step(-1));
-  const playButton = makeButton("▶", "Play / pause", togglePlay);
-  const nextButton = makeButton("⏭", "Next", () => step(1));
+  const prevButton = makeButton("\u23EE", "Previous", () => step(-1));
+  const playButton = makeButton("\u25B6", "Play / pause", togglePlay);
+  const nextButton = makeButton("\u23ED", "Next", () => step(1));
 
   const info = el("div", "flex:1;min-width:0;line-height:1.25;");
   const infoHead = el(
@@ -136,9 +149,8 @@
     render();
 
     M.playFullSong(song.id).then(ok => {
-      /* a newer tap superseded this one */
       if (token !== playToken) {
-        return;
+        return; /* a newer tap superseded this one */
       }
       if (!ok) {
         state = "stopped";
@@ -178,8 +190,6 @@
     render();
   }
 
-  /* Radio key (M) in the other controls file also goes through
-     CQMusic.toggle(), so keep the deck in sync with it. */
   window.addEventListener("cq:music-paused", () => {
     if (state === "playing") {
       state = "paused";
@@ -197,6 +207,14 @@
   window.addEventListener("cq:music-ended", () => {
     if (state === "playing") {
       playIndex(current + 1);
+    }
+  });
+
+  window.addEventListener("cq:music-error", () => {
+    if (state !== "stopped") {
+      state = "stopped";
+      flash("CAN'T LOAD: " + (current >= 0 ? songs[current].title : "song"));
+      render();
     }
   });
 
@@ -221,7 +239,7 @@
         "div",
         "width:22px;font-size:12px;color:" + (active ? GREEN : "#8aa") + ";",
         active
-          ? (state === "playing" ? "▶" : "❚❚")
+          ? (state === "playing" ? "\u25B6" : "\u275A\u275A")
           : String(index + 1).padStart(2, "0")
       );
 
@@ -236,7 +254,7 @@
         )
       );
 
-      const sub = [song.artist, song.city].filter(Boolean).join(" · ");
+      const sub = [song.artist, song.city].filter(Boolean).join(" \u00B7 ");
       if (sub) {
         text.appendChild(
           el(
@@ -265,17 +283,18 @@
 
   function render() {
     const song = current >= 0 ? songs[current] : null;
+    const total = String(songs.length).padStart(2, "0");
     const number = current >= 0
-      ? String(current + 1).padStart(2, "0") + "/" + String(songs.length).padStart(2, "0")
-      : "--/" + String(songs.length).padStart(2, "0");
+      ? String(current + 1).padStart(2, "0") + "/" + total
+      : "--/" + total;
 
     infoHead.textContent =
-      "TAPE DECK · " + number + " · " + state.toUpperCase();
+      "TAPE DECK \u00B7 " + number + " \u00B7 " + state.toUpperCase();
     infoTitle.textContent =
       notice || (song ? song.title : "NO TAPE LOADED");
     infoTitle.style.color = notice ? "#ff6b6b" : "#ffffff";
 
-    playButton.textContent = state === "playing" ? "❚❚" : "▶";
+    playButton.textContent = state === "playing" ? "\u275A\u275A" : "\u25B6";
 
     listButton.style.borderColor = open ? GREEN : CYAN;
     listButton.style.color = open ? GREEN : "#ffffff";

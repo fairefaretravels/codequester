@@ -1,6 +1,7 @@
 /* =========================================================
    CODEQUESTER — DRIVER CONTROLS
-   Plain script (no ES modules). Load AFTER main.js and music.js.
+   Plain script (no ES modules).
+   Load order: music.js, main.js, drivercontrols.js, tapedeck.js
 
    1) STEERING WHEEL
       Drag the wheel clockwise to turn right, counter-clockwise
@@ -9,11 +10,9 @@
       updateSteering(). Keyboard still works when the wheel is idle.
       Replaces the LEFT / RIGHT buttons on touch screens.
 
-   2) RADIO
-      Plays songs the player OWNS (CQMusic.playFullSong), so the
-      "buy full song at the record store" rule is untouched.
-      Prev / Play-Pause / Next, auto-advance, keys M (play/pause)
-      and N (next).
+   2) RADIO KEYS
+      M = play / pause, N = next track. The player itself is the
+      tape deck (tapedeck.js), reached through window.CQTapeDeck.
 
    Everything is guarded: if something is missing, the driving
    game keeps running.
@@ -29,14 +28,12 @@
     return;
   }
 
-  /* "auto" = wheel on touch screens, buttons on desktop
-     "always" = wheel everywhere   "never" = old buttons only */
+  /* "auto"   = wheel on touch screens, buttons on desktop
+     "always" = wheel everywhere
+     "never"  = old buttons only */
   const WHEEL_MODE = "auto";
   const WHEEL_SIZE = 140;
   const MAX_TURN = (125 * Math.PI) / 180;
-
-  const CYAN = "rgba(0,234,255,.6)";
-  const PANEL_BG = "rgba(0,0,0,.72)";
 
   function isTouch() {
     return (
@@ -49,8 +46,6 @@
   /* =======================================================
      STEERING WHEEL
      ======================================================= */
-  let wheelOn = false;
-
   function buildWheel() {
     const host = GAME.ui.steerButtons;
     const row = GAME.ui.mobile;
@@ -62,14 +57,11 @@
     row.style.alignItems = "flex-end";
 
     const wheel = document.createElement("div");
-    wheel.style.width = WHEEL_SIZE + "px";
-    wheel.style.height = WHEEL_SIZE + "px";
-    wheel.style.borderRadius = "50%";
-    wheel.style.background = "rgba(0,0,0,.35)";
-    wheel.style.touchAction = "none";
-    wheel.style.pointerEvents = "auto";
-    wheel.style.userSelect = "none";
-    wheel.style.webkitUserSelect = "none";
+    wheel.style.cssText =
+      "width:" + WHEEL_SIZE + "px;height:" + WHEEL_SIZE + "px;" +
+      "border-radius:50%;background:rgba(0,0,0,.35);" +
+      "touch-action:none;pointer-events:auto;" +
+      "user-select:none;-webkit-user-select:none;";
     wheel.setAttribute("aria-label", "Steering wheel");
 
     wheel.innerHTML =
@@ -176,7 +168,9 @@
     wheel.addEventListener("pointercancel", release);
     wheel.addEventListener("lostpointercapture", release);
 
-    wheelOn = true;
+    /* tapedeck.js reads this to sit above the wheel */
+    GAME.ui.wheelOn = true;
+    GAME.ui.wheelSize = WHEEL_SIZE;
   }
 
   if (
@@ -187,214 +181,30 @@
   }
 
   /* =======================================================
-     RADIO
+     MUSIC BINDING + RADIO KEYS
      ======================================================= */
-  const Music = window.CQMusic;
-  if (!Music) {
-    console.warn(
-      "CodeQuestER: CQMusic not found — radio disabled"
-    );
-    return;
-  }
-
-  /* Make sure GAME.library / GAME.cash exist and CQMusic is
-     pointed at this GAME. Safe to call more than once. */
-  try {
-    Music.bind(GAME);
-  } catch (error) {
-    console.warn("CodeQuestER: could not bind music", error);
-  }
-
-  function ownedTracks() {
-    return Music.getCatalog().filter(
-      song => song.full && Music.hasSong(song.id)
-    );
-  }
-
-  let currentId = null;
-  let expanded = false;
-
-  /* ---------- UI ---------- */
-  const radio = document.createElement("div");
-  radio.style.position = "fixed";
-  radio.style.left = "50%";
-  radio.style.transform = "translateX(-50%)";
-  radio.style.bottom =
-    (wheelOn ? WHEEL_SIZE + 34 : 92) + "px";
-  radio.style.zIndex = "26";
-  radio.style.fontFamily = "Arial, sans-serif";
-  radio.style.color = "#ffffff";
-  radio.style.background = PANEL_BG;
-  radio.style.border = "1px solid " + CYAN;
-  radio.style.borderRadius = "12px";
-  radio.style.padding = "6px 8px";
-  radio.style.maxWidth = "calc(100vw - 24px)";
-  radio.style.boxSizing = "border-box";
-  radio.style.display = "flex";
-  radio.style.alignItems = "center";
-  radio.style.gap = "6px";
-  radio.style.pointerEvents = "auto";
-  radio.style.touchAction = "manipulation";
-  radio.style.userSelect = "none";
-  radio.style.webkitUserSelect = "none";
-
-  function mkBtn(label, title) {
-    const b = document.createElement("button");
-    b.textContent = label;
-    b.title = title;
-    b.setAttribute("aria-label", title);
-    b.style.width = "40px";
-    b.style.height = "36px";
-    b.style.border = "1px solid " + CYAN;
-    b.style.borderRadius = "8px";
-    b.style.background = "rgba(0,0,0,.6)";
-    b.style.color = "#ffffff";
-    b.style.fontSize = "16px";
-    b.style.cursor = "pointer";
-    return b;
-  }
-
-  const toggleBtn = mkBtn("\uD83D\uDCFB", "Radio");
-  const prevBtn = mkBtn("\u23EE", "Previous");
-  const playBtn = mkBtn("\u25B6", "Play / pause");
-  const nextBtn = mkBtn("\u23ED", "Next");
-
-  const label = document.createElement("div");
-  label.style.fontSize = "12px";
-  label.style.lineHeight = "1.3";
-  label.style.minWidth = "0";
-  label.style.maxWidth = "170px";
-  label.style.overflow = "hidden";
-  label.style.textOverflow = "ellipsis";
-  label.style.whiteSpace = "nowrap";
-
-  radio.appendChild(toggleBtn);
-  radio.appendChild(prevBtn);
-  radio.appendChild(playBtn);
-  radio.appendChild(nextBtn);
-  radio.appendChild(label);
-  document.body.appendChild(radio);
-
-  /* CQMusic exposes no "paused?" query, so track it from its
-     events plus our own play calls. */
-  let playing = false;
-
-  function songText(song) {
-    if (!song) {
-      return "";
+  if (window.CQMusic) {
+    try {
+      window.CQMusic.bind(GAME);
+    } catch (error) {
+      console.warn("CodeQuestER: could not bind music", error);
     }
-    return song.artist
-      ? song.title + " \u2014 " + song.artist
-      : song.title;
+  } else {
+    console.warn("CodeQuestER: CQMusic not found, music disabled");
   }
-
-  function refresh() {
-    const tracks = ownedTracks();
-    const has = tracks.length > 0;
-
-    [prevBtn, playBtn, nextBtn].forEach(b => {
-      b.style.display = expanded ? "" : "none";
-      b.disabled = !has;
-      b.style.opacity = has ? "1" : "0.4";
-    });
-    label.style.display = expanded ? "" : "none";
-
-    playBtn.textContent = playing ? "\u23F8" : "\u25B6";
-
-    if (!has) {
-      label.textContent =
-        "No songs yet \u2014 buy some at the record store";
-    } else if (currentId) {
-      label.textContent = songText(Music.getSong(currentId));
-    } else {
-      label.textContent = "Radio off \u2014 press play";
-    }
-  }
-
-  /* ---------- playback ---------- */
-  function playTrack(id) {
-    if (!id) {
-      return Promise.resolve(false);
-    }
-    currentId = id;
-    playing = true;
-    refresh();
-    return Promise.resolve(Music.playFullSong(id)).then(ok => {
-      playing = !!ok;
-      if (!ok) {
-        console.warn(
-          "CodeQuestER: radio could not play " + id
-        );
-      }
-      refresh();
-      return ok;
-    });
-  }
-
-  function step(dir) {
-    const tracks = ownedTracks();
-    if (!tracks.length) {
-      refresh();
-      return;
-    }
-    let i = tracks.findIndex(s => s.id === currentId);
-    i = i === -1 ? (dir > 0 ? 0 : tracks.length - 1)
-                 : (i + dir + tracks.length) % tracks.length;
-    playTrack(tracks[i].id);
-  }
-
-  function playPause() {
-    const tracks = ownedTracks();
-    if (!tracks.length) {
-      refresh();
-      return;
-    }
-    if (currentId && Music.getNowPlaying()) {
-      Promise.resolve(Music.toggle()).then(result => {
-        playing = !!result;
-        refresh();
-      });
-      return;
-    }
-    const known = tracks.find(s => s.id === currentId);
-    playTrack((known || tracks[0]).id);
-  }
-
-  toggleBtn.addEventListener("click", () => {
-    expanded = !expanded;
-    refresh();
-  });
-  prevBtn.addEventListener("click", () => step(-1));
-  nextBtn.addEventListener("click", () => step(1));
-  playBtn.addEventListener("click", playPause);
-
-  window.addEventListener("cq:music-paused", () => {
-    playing = false;
-    refresh();
-  });
-  window.addEventListener("cq:music-resumed", () => {
-    playing = true;
-    refresh();
-  });
-  window.addEventListener("cq:music-ended", () => {
-    playing = false;
-    step(1); /* auto-advance, loops the owned list */
-  });
-  window.addEventListener("cq:library-changed", refresh);
 
   window.addEventListener("keydown", event => {
     if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) {
       return;
     }
+    if (!window.CQTapeDeck) {
+      return;
+    }
     const key = event.key.toLowerCase();
     if (key === "m") {
-      expanded = true;
-      playPause();
+      window.CQTapeDeck.toggle();
     } else if (key === "n") {
-      expanded = true;
-      step(1);
+      window.CQTapeDeck.next();
     }
   });
-
-  refresh();
 })();

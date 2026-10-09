@@ -1,27 +1,34 @@
 /* =========================================================
    CODEQUESTER — MAIN GAME
-   Three.js r156
-   FREE DRIVING BUILD
+   Three.js r156 — FREE DRIVING BUILD
+   Load order: music.js, main.js, drivercontrols.js, tapedeck.js
+
    CONTROLS
-   W / Arrow Up    Accelerate
-   S / Arrow Down  Brake / Reverse
-   A / Arrow Left  Steer
-   D / Arrow Right Steer
+   W / Up     Accelerate        A / Left   Steer left
+   S / Down   Brake / Reverse   D / Right  Steer right
+   C          Toggle DRIVE / LOOK camera
+   Q E R F    Look around (LOOK mode)
+   M / N      Radio play-pause / next (drivercontrols.js)
+
    MOBILE
-   On-screen steering + throttle/brake
-   STEP 1:
-   The player is no longer forced to stay on the track.
-   The car can freely drive around the generated world.
-   STEP 3 — FREE-LOOK CAMERA
-   CAMERA VIEW button (or C) toggles DRIVE / LOOK.
-   LOOK: drag / swipe the screen, or hold Q E R F.
-   The car keeps driving and is never rotated by the camera.
-   STEP 4 — CITY DISCOVERY
-   Five landmarks on existing city buildings. Drive to them,
-   discover them, and finish the first quest hook.
+   On-screen steering + throttle/brake (steering wheel is
+   added by drivercontrols.js).
+
+   NOTES
+   - Free driving: nothing pulls the car back to the road.
+   - Physics is scaled by frame time, so speed is the same on
+     60Hz and 120Hz screens.
+   - City discovery: five landmarks on existing city buildings.
    ========================================================= */
 (() => {
   "use strict";
+
+  /* STEERING DIRECTION
+     -1 = flipped (matches the "left/right inverted" report)
+      1 = original
+     If steering feels backwards, change only this number. */
+  const STEER_SIGN = -1;
+
   /* =========================================================
      GAME STATE
      ========================================================= */
@@ -51,751 +58,381 @@
       right: false
     }
   };
+
+  function releaseDrivingKeys() {
+    GAME.keys.forward = false;
+    GAME.keys.backward = false;
+    GAME.keys.left = false;
+    GAME.keys.right = false;
+  }
+
   /* =========================================================
-     SCENE
+     SCENE, CAMERA, RENDERER
      ========================================================= */
-  const scene =
-    new THREE.Scene();
-  scene.background =
-    new THREE.Color(0x02050b);
-  scene.fog =
-    new THREE.Fog(
-      0x02050b,
-      70,
-      260
-    );
-  /* =========================================================
-     CAMERA
-     ========================================================= */
-  const camera =
-    new THREE.PerspectiveCamera(
-      65,
-      window.innerWidth /
-        window.innerHeight,
-      0.1,
-      1000
-    );
-  camera.position.set(
-    0,
-    6,
-    10
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x02050b);
+  scene.fog = new THREE.Fog(0x02050b, 70, 260);
+
+  const camera = new THREE.PerspectiveCamera(
+    65,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
   );
-  /* =========================================================
-     RENDERER
-     ========================================================= */
-  const renderer =
-    new THREE.WebGLRenderer({
-      antialias: true
-    });
-  renderer.setPixelRatio(
-    Math.min(
-      window.devicePixelRatio,
-      2
-    )
-  );
-  renderer.setSize(
-    window.innerWidth,
-    window.innerHeight
-  );
+  camera.position.set(0, 6, 10);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type =
-    THREE.PCFSoftShadowMap;
-  renderer.outputColorSpace =
-    THREE.SRGBColorSpace;
-  document.body.appendChild(
-    renderer.domElement
-  );
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  document.body.appendChild(renderer.domElement);
+
   /* =========================================================
      LIGHTING
+     The sun (and its shadow box) follows the car, so shadows
+     keep working anywhere in the free-driving world.
      ========================================================= */
-  const hemisphere =
-    new THREE.HemisphereLight(
-      0x8fd8ff,
-      0x05070b,
-      1.7
-    );
-  scene.add(hemisphere);
-  const sun =
-    new THREE.DirectionalLight(
-      0xffffff,
-      2.0
-    );
-  sun.position.set(
-    -60,
-    90,
-    40
-  );
+  scene.add(new THREE.HemisphereLight(0x8fd8ff, 0x05070b, 1.7));
+
+  const SUN_OFFSET = new THREE.Vector3(-60, 90, 40);
+  const SUN_SNAP = 20; /* snap to a grid so shadows don't shimmer */
+
+  const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+  sun.position.copy(SUN_OFFSET);
   sun.castShadow = true;
-  sun.shadow.mapSize.width =
-    2048;
-  sun.shadow.mapSize.height =
-    2048;
-  sun.shadow.camera.left =
-    -180;
-  sun.shadow.camera.right =
-    180;
-  sun.shadow.camera.top =
-    180;
-  sun.shadow.camera.bottom =
-    -180;
-  sun.shadow.camera.near =
-    1;
-  sun.shadow.camera.far =
-    400;
+  sun.shadow.mapSize.width = 2048;
+  sun.shadow.mapSize.height = 2048;
+  sun.shadow.camera.left = -180;
+  sun.shadow.camera.right = 180;
+  sun.shadow.camera.top = 180;
+  sun.shadow.camera.bottom = -180;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 400;
   scene.add(sun);
+  scene.add(sun.target);
+
+  function updateSun() {
+    const x = Math.round(car.position.x / SUN_SNAP) * SUN_SNAP;
+    const z = Math.round(car.position.z / SUN_SNAP) * SUN_SNAP;
+    sun.target.position.set(x, 0, z);
+    sun.position.set(
+      x + SUN_OFFSET.x,
+      SUN_OFFSET.y,
+      z + SUN_OFFSET.z
+    );
+    sun.target.updateMatrixWorld();
+  }
+
   /* =========================================================
      TRACK GENERATOR
      ========================================================= */
-  const track =
-    new TrackGenerator(scene);
-  const waypoints =
-    track.generate();
-  if (
-    !waypoints ||
-    waypoints.length < 10
-  ) {
-    console.error(
-      "CodeQuestER: Track generation failed."
-    );
+  const track = new TrackGenerator(scene);
+  const waypoints = track.generate();
+
+  if (!waypoints || waypoints.length < 10) {
+    console.error("CodeQuestER: Track generation failed.");
     return;
   }
-  /* =========================================================
-     TRACK INFORMATION
-     ========================================================= */
-  const TRACK_COUNT =
-    waypoints.length;
-  const ROAD_WIDTH =
-    track.laneHalfWidth * 2;
+
+  const TRACK_COUNT = waypoints.length;
+  const ROAD_WIDTH = track.laneHalfWidth * 2;
+
   /* =========================================================
      PLAYER CAR
      ========================================================= */
-  const car =
-    new THREE.Group();
-  car.name =
-    "CodeQuestER_Player";
+  const car = new THREE.Group();
+  car.name = "CodeQuestER_Player";
   scene.add(car);
-  /* ---------------------------------------------------------
-     BODY
-     --------------------------------------------------------- */
-  const bodyGeometry =
-    new THREE.BoxGeometry(
-      2.25,
-      0.62,
-      4.15
-    );
-  const bodyMaterial =
-    new THREE.MeshStandardMaterial({
-      color: 0x168cff,
-      metalness: 0.65,
-      roughness: 0.25
-    });
-  const body =
-    new THREE.Mesh(
-      bodyGeometry,
-      bodyMaterial
-    );
-  body.position.y =
-    0.65;
+
+  const BODY_BASE_COLOR = 0x168cff;
+
+  const bodyMaterial = new THREE.MeshStandardMaterial({
+    color: BODY_BASE_COLOR,
+    metalness: 0.65,
+    roughness: 0.25
+  });
+
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(2.25, 0.62, 4.15),
+    bodyMaterial
+  );
+  body.position.y = 0.65;
   body.castShadow = true;
   car.add(body);
-  /* ---------------------------------------------------------
-     HOOD
-     --------------------------------------------------------- */
-  const hoodGeometry =
-    new THREE.BoxGeometry(
-      2.05,
-      0.22,
-      1.15
-    );
-  const hood =
-    new THREE.Mesh(
-      hoodGeometry,
-      bodyMaterial
-    );
-  hood.position.set(
-    0,
-    0.96,
-    -1.42
+
+  const hood = new THREE.Mesh(
+    new THREE.BoxGeometry(2.05, 0.22, 1.15),
+    bodyMaterial
   );
+  hood.position.set(0, 0.96, -1.42);
   hood.castShadow = true;
   car.add(hood);
-  /* ---------------------------------------------------------
-     CABIN
-     --------------------------------------------------------- */
-  const cabinGeometry =
-    new THREE.BoxGeometry(
-      1.65,
-      0.58,
-      1.9
-    );
-  const cabinMaterial =
+
+  const cabin = new THREE.Mesh(
+    new THREE.BoxGeometry(1.65, 0.58, 1.9),
     new THREE.MeshStandardMaterial({
       color: 0x092c58,
       metalness: 0.35,
       roughness: 0.2,
       transparent: true,
       opacity: 0.88
-    });
-  const cabin =
-    new THREE.Mesh(
-      cabinGeometry,
-      cabinMaterial
-    );
-  cabin.position.set(
-    0,
-    1.13,
-    0.05
+    })
   );
+  cabin.position.set(0, 1.13, 0.05);
   cabin.castShadow = true;
   car.add(cabin);
-  /* ---------------------------------------------------------
-     WHEELS
-     --------------------------------------------------------- */
+
+  /* wheels */
   const wheels = [];
   const frontWheels = [];
-  function createWheel(
-    x,
-    z,
-    front
-  ) {
-    const geometry =
-      new THREE.CylinderGeometry(
-        0.43,
-        0.43,
-        0.32,
-        18
-      );
-    const material =
-      new THREE.MeshStandardMaterial({
-        color: 0x080808,
-        roughness: 0.8,
-        metalness: 0.1
-      });
-    const wheel =
-      new THREE.Mesh(
-        geometry,
-        material
-      );
-    wheel.rotation.z =
-      Math.PI / 2;
-    wheel.position.set(
-      x,
-      0.42,
-      z
-    );
+  const wheelGeometry = new THREE.CylinderGeometry(0.43, 0.43, 0.32, 18);
+  const wheelMaterial = new THREE.MeshStandardMaterial({
+    color: 0x080808,
+    roughness: 0.8,
+    metalness: 0.1
+  });
+
+  function createWheel(x, z, front) {
+    const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(x, 0.42, z);
     wheel.castShadow = true;
     car.add(wheel);
     wheels.push(wheel);
     if (front) {
       frontWheels.push(wheel);
     }
-    return wheel;
   }
-  createWheel(
-    -1.08,
-    -1.35,
-    true
-  );
-  createWheel(
-    1.08,
-    -1.35,
-    true
-  );
-  createWheel(
-    -1.08,
-    1.35,
-    false
-  );
-  createWheel(
-    1.08,
-    1.35,
-    false
-  );
-  /* =========================================================
-     HEADLIGHTS
-     ========================================================= */
+
+  createWheel(-1.08, -1.35, true);
+  createWheel(1.08, -1.35, true);
+  createWheel(-1.08, 1.35, false);
+  createWheel(1.08, 1.35, false);
+
+  /* headlights */
+  const headlightGeometry = new THREE.BoxGeometry(0.4, 0.18, 0.08);
+  const headlightMaterial = new THREE.MeshBasicMaterial({ color: 0xffffd0 });
+
   function createHeadlight(x) {
-    const geometry =
-      new THREE.BoxGeometry(
-        0.4,
-        0.18,
-        0.08
-      );
-    const material =
-      new THREE.MeshBasicMaterial({
-        color: 0xffffd0
-      });
-    const light =
-      new THREE.Mesh(
-        geometry,
-        material
-      );
-    light.position.set(
-      x,
-      0.73,
-      -2.1
-    );
+    const light = new THREE.Mesh(headlightGeometry, headlightMaterial);
+    light.position.set(x, 0.73, -2.1);
     car.add(light);
-    const spot =
-      new THREE.SpotLight(
-        0xffffff,
-        2.0,
-        35,
-        Math.PI / 7,
-        0.5,
-        1
-      );
-    spot.position.set(
-      x,
-      0.85,
-      -2
-    );
-    spot.target.position.set(
-      x,
-      0,
-      -15
-    );
+
+    const spot = new THREE.SpotLight(0xffffff, 2.0, 35, Math.PI / 7, 0.5, 1);
+    spot.position.set(x, 0.85, -2);
+    spot.target.position.set(x, 0, -15);
     car.add(spot);
     car.add(spot.target);
   }
+
   createHeadlight(-0.65);
   createHeadlight(0.65);
-  /* =========================================================
-     REAR LIGHTS
-     ========================================================= */
+
+  /* rear lights */
+  const rearLightGeometry = new THREE.BoxGeometry(0.42, 0.18, 0.08);
+  const rearLightMaterial = new THREE.MeshBasicMaterial({ color: 0xff1744 });
+
   function createRearLight(x) {
-    const geometry =
-      new THREE.BoxGeometry(
-        0.42,
-        0.18,
-        0.08
-      );
-    const material =
-      new THREE.MeshBasicMaterial({
-        color: 0xff1744
-      });
-    const light =
-      new THREE.Mesh(
-        geometry,
-        material
-      );
-    light.position.set(
-      x,
-      0.72,
-      2.08
-    );
+    const light = new THREE.Mesh(rearLightGeometry, rearLightMaterial);
+    light.position.set(x, 0.72, 2.08);
     car.add(light);
   }
+
   createRearLight(-0.65);
   createRearLight(0.65);
-  /* =========================================================
-     CAR START POSITION
-     ========================================================= */
+
+  /* start position: the car drives toward local -Z */
   function getDirection(index) {
-    const current =
-      waypoints[
-        index %
-        TRACK_COUNT
-      ];
-    const next =
-      waypoints[
-        (index + 1) %
-        TRACK_COUNT
-      ];
-    return new THREE.Vector3()
-      .subVectors(
-        next,
-        current
-      )
-      .normalize();
+    const current = waypoints[index % TRACK_COUNT];
+    const next = waypoints[(index + 1) % TRACK_COUNT];
+    return new THREE.Vector3().subVectors(next, current).normalize();
   }
-  const startIndex = 0;
-  const startPoint =
-    waypoints[startIndex];
-  const startDirection =
-    getDirection(startIndex);
-  car.position.copy(
-    startPoint
-  );
+
+  const startDirection = getDirection(0);
+  car.position.copy(waypoints[0]);
   car.position.y = 0;
-  /*
-    The car drives toward local -Z,
-    so face -Z along the starting
-    track direction.
-  */
-  car.rotation.y =
-    Math.atan2(
-      -startDirection.x,
-      -startDirection.z
-    );
+  car.rotation.y = Math.atan2(-startDirection.x, -startDirection.z);
+
+  updateSun();
+
   /* =========================================================
      HUD
      ========================================================= */
-  const hud =
-    document.createElement("div");
-  hud.style.position =
-    "fixed";
-  hud.style.top =
-    "14px";
-  hud.style.left =
-    "14px";
-  hud.style.zIndex =
-    "20";
-  hud.style.fontFamily =
-    "Arial, sans-serif";
-  hud.style.color =
-    "#ffffff";
-  hud.style.background =
-    "rgba(0,0,0,.72)";
-  hud.style.border =
-    "1px solid rgba(0,234,255,.4)";
-  hud.style.padding =
-    "12px 16px";
-  hud.style.borderRadius =
-    "8px";
-  hud.style.minWidth =
-    "190px";
-  hud.style.lineHeight =
-    "1.45";
-  document.body.appendChild(
-    hud
-  );
-  /* =========================================================
-     MESSAGE
-     ========================================================= */
-  const message =
-    document.createElement("div");
-  message.style.position =
-    "fixed";
-  message.style.left =
-    "50%";
-  message.style.top =
-    "18%";
-  message.style.transform =
-    "translate(-50%, -50%)";
-  message.style.zIndex =
-    "30";
-  message.style.color =
-    "#ffffff";
-  message.style.fontFamily =
-    "Arial, sans-serif";
-  message.style.fontSize =
-    "26px";
-  message.style.fontWeight =
-    "bold";
-  message.style.textAlign =
-    "center";
-  message.style.textShadow =
-    "0 0 12px #00eaff";
-  message.style.pointerEvents =
-    "none";
-  message.style.opacity =
-    "0";
-  document.body.appendChild(
-    message
-  );
+  const hud = document.createElement("div");
+  hud.style.cssText =
+    "position:fixed;top:14px;left:14px;z-index:20;" +
+    "font-family:Arial,sans-serif;color:#fff;background:rgba(0,0,0,.72);" +
+    "border:1px solid rgba(0,234,255,.4);padding:12px 16px;" +
+    "border-radius:8px;min-width:190px;line-height:1.45;";
+  document.body.appendChild(hud);
+
+  const message = document.createElement("div");
+  message.style.cssText =
+    "position:fixed;left:50%;top:18%;transform:translate(-50%,-50%);" +
+    "z-index:30;color:#fff;font-family:Arial,sans-serif;font-size:26px;" +
+    "font-weight:bold;text-align:center;text-shadow:0 0 12px #00eaff;" +
+    "pointer-events:none;opacity:0;";
+  document.body.appendChild(message);
+
   let messageTimer = 0;
+
   function showMessage(text) {
-    message.textContent =
-      text;
-    message.style.opacity =
-      "1";
-    messageTimer =
-      1.8;
+    message.textContent = text;
+    message.style.opacity = "1";
+    messageTimer = 1.8;
   }
-  /* =========================================================
-     HUD UPDATE
-     ========================================================= */
+
+  function updateMessage(delta) {
+    if (messageTimer > 0) {
+      messageTimer -= delta;
+      if (messageTimer <= 0) {
+        message.style.opacity = "0";
+      }
+    }
+  }
+
+  let hudHTML = "";
+
+  /* Only touches the DOM when the text actually changes. */
   function updateHUD() {
-    const mph =
-      Math.round(
-        Math.abs(GAME.speed) *
-        145
-      );
-    const boost =
-      GAME.boostTimer > 0
-        ? "ACTIVE"
-        : "READY";
-    hud.innerHTML = `
-      <strong>CODEQUESTER</strong>
-      <br>
-      SPEED: ${mph}
-      <br>
-      LAP: ${GAME.lap}
-      <br>
-      SCORE: ${GAME.score}
-      <br>
-      BOOST: ${boost}
-      <br>
-      TRACK: ${GAME.trackIndex + 1}/${TRACK_COUNT}
-      <br>
-      DISCOVERED: ${discoveredCount()} / ${LOCATIONS.length}
-      <br>
-      QUEST: ${questHudText()}
-      <br><br>
-      W / ↑  ACCELERATE
-      <br>
-      S / ↓  BRAKE
-      <br>
-      A / ←  LEFT
-      <br>
-      D / →  RIGHT
-      <br>
-      C  CAMERA VIEW
-      <br>
-      Q E R F  LOOK
-      <br>
-      M  RADIO   N  NEXT
-    `;
+    const mph = Math.round(Math.abs(GAME.speed) * 145);
+    const boost = GAME.boostTimer > 0 ? "ACTIVE" : "READY";
+
+    const html =
+      "<strong>CODEQUESTER</strong><br>" +
+      "SPEED: " + mph + "<br>" +
+      "LAP: " + GAME.lap + "<br>" +
+      "SCORE: " + GAME.score + "<br>" +
+      "BOOST: " + boost + "<br>" +
+      "TRACK: " + (GAME.trackIndex + 1) + "/" + TRACK_COUNT + "<br>" +
+      "DISCOVERED: " + discoveredCount() + " / " + LOCATIONS.length + "<br>" +
+      "QUEST: " + questHudText() + "<br><br>" +
+      "W / \u2191  ACCELERATE<br>" +
+      "S / \u2193  BRAKE<br>" +
+      "A / \u2190  LEFT<br>" +
+      "D / \u2192  RIGHT<br>" +
+      "C  CAMERA VIEW<br>" +
+      "Q E R F  LOOK<br>" +
+      "M  RADIO   N  NEXT";
+
+    if (html !== hudHTML) {
+      hudHTML = html;
+      hud.innerHTML = html;
+    }
   }
+
   /* =========================================================
      KEYBOARD
      ========================================================= */
-  window.addEventListener(
-    "keydown",
-    event => {
-      const key =
-        event.key.toLowerCase();
-      if (
-        key === "arrowup" ||
-        key === "arrowdown" ||
-        key === "arrowleft" ||
-        key === "arrowright"
-      ) {
-        event.preventDefault();
-      }
-      if (
-        key === "w" ||
-        key === "arrowup"
-      ) {
-        GAME.keys.forward =
-          true;
-      }
-      if (
-        key === "s" ||
-        key === "arrowdown"
-      ) {
-        GAME.keys.backward =
-          true;
-      }
-      if (
-        key === "a" ||
-        key === "arrowleft"
-      ) {
-        GAME.keys.left =
-          true;
-      }
-      if (
-        key === "d" ||
-        key === "arrowright"
-      ) {
-        GAME.keys.right =
-          true;
-      }
+  const KEY_MAP = {
+    w: "forward",
+    arrowup: "forward",
+    s: "backward",
+    arrowdown: "backward",
+    a: "left",
+    arrowleft: "left",
+    d: "right",
+    arrowright: "right"
+  };
+
+  window.addEventListener("keydown", event => {
+    const key = event.key.toLowerCase();
+
+    if (key.indexOf("arrow") === 0) {
+      event.preventDefault();
     }
-  );
-  window.addEventListener(
-    "keyup",
-    event => {
-      const key =
-        event.key.toLowerCase();
-      if (
-        key === "w" ||
-        key === "arrowup"
-      ) {
-        GAME.keys.forward =
-          false;
-      }
-      if (
-        key === "s" ||
-        key === "arrowdown"
-      ) {
-        GAME.keys.backward =
-          false;
-      }
-      if (
-        key === "a" ||
-        key === "arrowleft"
-      ) {
-        GAME.keys.left =
-          false;
-      }
-      if (
-        key === "d" ||
-        key === "arrowright"
-      ) {
-        GAME.keys.right =
-          false;
-      }
+
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return;
     }
-  );
+
+    const action = KEY_MAP[key];
+    if (action) {
+      GAME.keys[action] = true;
+    }
+  });
+
+  window.addEventListener("keyup", event => {
+    const action = KEY_MAP[event.key.toLowerCase()];
+    if (action) {
+      GAME.keys[action] = false;
+    }
+  });
+
   /* =========================================================
      MOBILE CONTROLS
      ========================================================= */
-  const mobile =
-    document.createElement("div");
-  mobile.style.position =
-    "fixed";
-  mobile.style.bottom =
-    "20px";
-  mobile.style.left =
-    "0";
-  mobile.style.right =
-    "0";
-  mobile.style.zIndex =
-    "25";
-  mobile.style.display =
-    "flex";
-  mobile.style.justifyContent =
-    "space-between";
-  mobile.style.padding =
-    "0 18px";
-  mobile.style.pointerEvents =
-    "none";
-  document.body.appendChild(
-    mobile
-  );
-  function makeButton(
-    label,
-    action
-  ) {
-    const button =
-      document.createElement(
-        "button"
-      );
-    button.textContent =
-      label;
-    button.style.width =
-      "72px";
-    button.style.height =
-      "58px";
-    button.style.border =
-      "1px solid rgba(0,234,255,.6)";
-    button.style.borderRadius =
-      "12px";
-    button.style.background =
-      "rgba(0,0,0,.72)";
-    button.style.color =
-      "#ffffff";
-    button.style.fontSize =
-      "18px";
-    button.style.fontWeight =
-      "bold";
-    button.style.touchAction =
-      "none";
-    button.style.pointerEvents =
-      "auto";
-    function press(e) {
-      e.preventDefault();
+  const mobile = document.createElement("div");
+  mobile.style.cssText =
+    "position:fixed;bottom:20px;left:0;right:0;z-index:25;display:flex;" +
+    "justify-content:space-between;padding:0 18px;pointer-events:none;";
+  document.body.appendChild(mobile);
+
+  function makeButton(label, action) {
+    const button = document.createElement("button");
+    button.textContent = label;
+    button.style.cssText =
+      "width:72px;height:58px;border:1px solid rgba(0,234,255,.6);" +
+      "border-radius:12px;background:rgba(0,0,0,.72);color:#fff;" +
+      "font-size:18px;font-weight:bold;touch-action:none;" +
+      "pointer-events:auto;";
+
+    function press(event) {
+      event.preventDefault();
       action(true);
     }
-    function release(e) {
-      e.preventDefault();
+    function release(event) {
+      event.preventDefault();
       action(false);
     }
-    button.addEventListener(
-      "pointerdown",
-      press
-    );
-    button.addEventListener(
-      "pointerup",
-      release
-    );
-    button.addEventListener(
-      "pointercancel",
-      release
-    );
-    button.addEventListener(
-      "pointerleave",
-      release
-    );
+
+    button.addEventListener("pointerdown", press);
+    button.addEventListener("pointerup", release);
+    button.addEventListener("pointercancel", release);
+    button.addEventListener("pointerleave", release);
     return button;
   }
-  const leftButton =
-    makeButton(
-      "LEFT",
-      value => {
-        GAME.keys.left =
-          value;
-      }
-    );
-  const rightButton =
-    makeButton(
-      "RIGHT",
-      value => {
-        GAME.keys.right =
-          value;
-      }
-    );
-  const controlsLeft =
-    document.createElement(
-      "div"
-    );
-  controlsLeft.style.display =
-    "flex";
-  controlsLeft.style.gap =
-    "8px";
+
+  const controlsLeft = document.createElement("div");
+  controlsLeft.style.cssText = "display:flex;gap:8px;";
   controlsLeft.appendChild(
-    leftButton
+    makeButton("LEFT", value => { GAME.keys.left = value; })
   );
   controlsLeft.appendChild(
-    rightButton
+    makeButton("RIGHT", value => { GAME.keys.right = value; })
   );
-  const controlsRight =
-    document.createElement(
-      "div"
-    );
-  controlsRight.style.display =
-    "flex";
-  controlsRight.style.gap =
-    "8px";
-  const brakeButton =
-    makeButton(
-      "BRAKE",
-      value => {
-        GAME.keys.backward =
-          value;
-      }
-    );
-  const gasButton =
-    makeButton(
-      "GAS",
-      value => {
-        GAME.keys.forward =
-          value;
-      }
-    );
+
+  const controlsRight = document.createElement("div");
+  controlsRight.style.cssText = "display:flex;gap:8px;";
   controlsRight.appendChild(
-    brakeButton
+    makeButton("BRAKE", value => { GAME.keys.backward = value; })
   );
   controlsRight.appendChild(
-    gasButton
+    makeButton("GAS", value => { GAME.keys.forward = value; })
   );
-  mobile.appendChild(
-    controlsLeft
-  );
-  mobile.appendChild(
-    controlsRight
-  );
-  /* Exposed for drivercontrols.js (steering wheel + radio). */
+
+  mobile.appendChild(controlsLeft);
+  mobile.appendChild(controlsRight);
+
+  /* Exposed for drivercontrols.js (steering wheel) and tapedeck.js. */
   GAME.analogSteer = null;
   GAME.ui = {
     mobile,
     steerButtons: controlsLeft
   };
   window.CQGame = GAME;
+
   /* =========================================================
-     STEP 3 — FREE-LOOK CAMERA
-     DRIVE = the existing follow camera (default).
-     LOOK  = same follow camera, but the player can look
-             around independently. The car is never rotated
-             and keeps its normal physics; the camera is an
-             observation system only.
+     FREE-LOOK CAMERA
+     DRIVE = the follow camera (default).
+     LOOK  = same follow camera, but the player can look around
+             independently. The car is never rotated.
      ========================================================= */
   const LOOK = {
     mode: "DRIVE",
-    /* radians. +yaw looks left, +pitch looks up */
-    yaw: 0,
+    yaw: 0, /* radians: +yaw looks left, +pitch looks up */
     pitch: 0,
     targetYaw: 0,
     targetPitch: 0,
@@ -807,446 +444,243 @@
     followRate: 12,
     returnRate: 3,
     maxReturnSpeed: 5,
-    keys: {
-      left: false,
-      right: false,
-      up: false,
-      down: false
-    },
+    keys: { left: false, right: false, up: false, down: false },
     dragPointer: null,
     lastX: 0,
     lastY: 0
   };
+
   function wrapAngle(angle) {
-    return Math.atan2(
-      Math.sin(angle),
-      Math.cos(angle)
-    );
+    return Math.atan2(Math.sin(angle), Math.cos(angle));
   }
-  /* ---------------------------------------------------------
-     CAMERA VIEW BUTTON + MODE INDICATOR
-     (top-right, clear of the HUD and the driving buttons)
-     --------------------------------------------------------- */
-  const cameraPanel =
-    document.createElement("div");
-  cameraPanel.style.position =
-    "fixed";
-  cameraPanel.style.top =
-    "14px";
-  cameraPanel.style.right =
-    "10px";
-  cameraPanel.style.width =
-    "112px";
-  cameraPanel.style.boxSizing =
-    "border-box";
-  cameraPanel.style.zIndex =
-    "26";
-  cameraPanel.style.fontFamily =
-    "Arial, sans-serif";
-  cameraPanel.style.color =
-    "#ffffff";
-  cameraPanel.style.textAlign =
-    "center";
-  cameraPanel.style.pointerEvents =
-    "none";
-  document.body.appendChild(
-    cameraPanel
-  );
-  const cameraButton =
-    document.createElement("button");
-  cameraButton.type =
-    "button";
-  cameraButton.textContent =
-    "CAMERA VIEW";
-  cameraButton.style.width =
-    "100%";
-  cameraButton.style.height =
-    "40px";
-  cameraButton.style.borderRadius =
-    "10px";
-  cameraButton.style.fontSize =
-    "12px";
-  cameraButton.style.fontWeight =
-    "bold";
-  cameraButton.style.letterSpacing =
-    "0.5px";
-  cameraButton.style.cursor =
-    "pointer";
-  cameraButton.style.touchAction =
-    "manipulation";
-  cameraButton.style.pointerEvents =
-    "auto";
-  cameraPanel.appendChild(
-    cameraButton
-  );
-  const cameraStatus =
-    document.createElement("div");
-  cameraStatus.style.marginTop =
-    "6px";
-  cameraStatus.style.padding =
-    "4px 6px";
-  cameraStatus.style.fontSize =
-    "11px";
-  cameraStatus.style.lineHeight =
-    "1.35";
-  cameraStatus.style.background =
-    "rgba(0,0,0,.55)";
-  cameraStatus.style.borderRadius =
-    "6px";
-  cameraPanel.appendChild(
-    cameraStatus
-  );
+
+  function clearLookKeys() {
+    LOOK.keys.left = false;
+    LOOK.keys.right = false;
+    LOOK.keys.up = false;
+    LOOK.keys.down = false;
+  }
+
+  /* camera button + mode indicator (top-right) */
+  const cameraPanel = document.createElement("div");
+  cameraPanel.style.cssText =
+    "position:fixed;top:14px;right:10px;width:112px;box-sizing:border-box;" +
+    "z-index:26;font-family:Arial,sans-serif;color:#fff;text-align:center;" +
+    "pointer-events:none;";
+  document.body.appendChild(cameraPanel);
+
+  const cameraButton = document.createElement("button");
+  cameraButton.type = "button";
+  cameraButton.textContent = "CAMERA VIEW";
+  cameraButton.style.cssText =
+    "width:100%;height:40px;border-radius:10px;font-size:12px;" +
+    "font-weight:bold;letter-spacing:.5px;cursor:pointer;" +
+    "touch-action:manipulation;pointer-events:auto;";
+  cameraPanel.appendChild(cameraButton);
+
+  const cameraStatus = document.createElement("div");
+  cameraStatus.style.cssText =
+    "margin-top:6px;padding:4px 6px;font-size:11px;line-height:1.35;" +
+    "background:rgba(0,0,0,.55);border-radius:6px;";
+  cameraPanel.appendChild(cameraStatus);
+
   /* objective readout: nearest / quest location + distance */
-  const objectivePanel =
-    document.createElement("div");
-  objectivePanel.style.marginTop =
-    "6px";
-  objectivePanel.style.padding =
-    "5px 6px";
-  objectivePanel.style.fontSize =
-    "12px";
-  objectivePanel.style.fontWeight =
-    "bold";
-  objectivePanel.style.lineHeight =
-    "1.35";
-  objectivePanel.style.background =
-    "rgba(0,0,0,.55)";
-  objectivePanel.style.border =
-    "1px solid rgba(0,234,255,.35)";
-  objectivePanel.style.borderRadius =
-    "6px";
-  objectivePanel.style.display =
-    "none";
-  cameraPanel.appendChild(
-    objectivePanel
-  );
+  const objectivePanel = document.createElement("div");
+  objectivePanel.style.cssText =
+    "margin-top:6px;padding:5px 6px;font-size:12px;font-weight:bold;" +
+    "line-height:1.35;background:rgba(0,0,0,.55);" +
+    "border:1px solid rgba(0,234,255,.35);border-radius:6px;display:none;";
+  cameraPanel.appendChild(objectivePanel);
+
   let cameraStatusHTML = "";
+
   function updateCameraPanel() {
-    const looking =
-      LOOK.mode === "LOOK";
-    const html =
-      looking
-        ? "CAMERA: LOOK" +
-          "<br><strong style=\"color:#22ff66\">LOOK AROUND</strong>" +
-          "<br>DRAG TO LOOK"
-        : "CAMERA: DRIVE";
+    const looking = LOOK.mode === "LOOK";
+    const html = looking
+      ? 'CAMERA: LOOK<br><strong style="color:#22ff66">LOOK AROUND</strong>' +
+        "<br>DRAG TO LOOK"
+      : "CAMERA: DRIVE";
+
     if (html !== cameraStatusHTML) {
       cameraStatusHTML = html;
       cameraStatus.innerHTML = html;
     }
-    cameraButton.style.border =
-      looking
-        ? "1px solid #22ff66"
-        : "1px solid rgba(0,234,255,.6)";
-    cameraButton.style.background =
-      looking
-        ? "rgba(0,60,30,.85)"
-        : "rgba(0,0,0,.72)";
-    cameraButton.style.color =
-      looking
-        ? "#22ff66"
-        : "#ffffff";
-    cameraButton.setAttribute(
-      "aria-pressed",
-      looking ? "true" : "false"
-    );
-    renderer.domElement.style.cursor =
-      looking ? "grab" : "default";
+
+    cameraButton.style.border = looking
+      ? "1px solid #22ff66"
+      : "1px solid rgba(0,234,255,.6)";
+    cameraButton.style.background = looking
+      ? "rgba(0,60,30,.85)"
+      : "rgba(0,0,0,.72)";
+    cameraButton.style.color = looking ? "#22ff66" : "#ffffff";
+    cameraButton.setAttribute("aria-pressed", looking ? "true" : "false");
+    renderer.domElement.style.cursor = looking ? "grab" : "default";
   }
+
   function setCameraMode(mode) {
     if (LOOK.mode === mode) {
       return;
     }
     LOOK.mode = mode;
     LOOK.dragPointer = null;
-    LOOK.keys.left = false;
-    LOOK.keys.right = false;
-    LOOK.keys.up = false;
-    LOOK.keys.down = false;
+    clearLookKeys();
+
     if (mode === "DRIVE") {
-      /*
-        Go home the short way round, then let
-        updateLook() ease the offsets back to 0
-        instead of snapping.
-      */
-      const wrapped =
-        wrapAngle(LOOK.yaw);
-      LOOK.yaw = wrapped;
+      /* go home the short way round, then ease back to 0 */
+      LOOK.yaw = wrapAngle(LOOK.yaw);
       LOOK.targetYaw = 0;
       LOOK.targetPitch = 0;
     }
     updateCameraPanel();
   }
+
   function toggleCameraMode() {
-    setCameraMode(
-      LOOK.mode === "DRIVE"
-        ? "LOOK"
-        : "DRIVE"
-    );
+    setCameraMode(LOOK.mode === "DRIVE" ? "LOOK" : "DRIVE");
   }
-  cameraButton.addEventListener(
-    "click",
-    () => {
-      toggleCameraMode();
-      cameraButton.blur();
+
+  cameraButton.addEventListener("click", () => {
+    toggleCameraMode();
+    cameraButton.blur();
+  });
+
+  /* drag / swipe to look (canvas only, so driving buttons
+     keep working and a second finger can still steer) */
+  const lookSurface = renderer.domElement;
+  lookSurface.style.touchAction = "none";
+
+  lookSurface.addEventListener("contextmenu", event => {
+    event.preventDefault();
+  });
+
+  lookSurface.addEventListener("pointerdown", event => {
+    if (LOOK.mode !== "LOOK" || LOOK.dragPointer !== null) {
+      return;
     }
-  );
-  /* ---------------------------------------------------------
-     DRAG / SWIPE TO LOOK (mouse, touch and pen)
-     Listens on the game canvas only, so the driving buttons
-     keep working and a second finger can still steer.
-     --------------------------------------------------------- */
-  const lookSurface =
-    renderer.domElement;
-  lookSurface.style.touchAction =
-    "none";
-  lookSurface.addEventListener(
-    "contextmenu",
-    event => {
-      event.preventDefault();
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
     }
-  );
-  lookSurface.addEventListener(
-    "pointerdown",
-    event => {
-      if (LOOK.mode !== "LOOK") {
-        return;
-      }
-      if (LOOK.dragPointer !== null) {
-        return;
-      }
-      if (
-        event.pointerType === "mouse" &&
-        event.button !== 0
-      ) {
-        return;
-      }
-      LOOK.dragPointer =
-        event.pointerId;
-      LOOK.lastX =
-        event.clientX;
-      LOOK.lastY =
-        event.clientY;
-      try {
-        lookSurface.setPointerCapture(
-          event.pointerId
-        );
-      } catch (error) {
-        /* capture is optional */
-      }
-      lookSurface.style.cursor =
-        "grabbing";
-      event.preventDefault();
+    LOOK.dragPointer = event.pointerId;
+    LOOK.lastX = event.clientX;
+    LOOK.lastY = event.clientY;
+    try {
+      lookSurface.setPointerCapture(event.pointerId);
+    } catch (error) {
+      /* capture is optional */
     }
-  );
-  lookSurface.addEventListener(
-    "pointermove",
-    event => {
-      if (
-        LOOK.mode !== "LOOK" ||
-        event.pointerId !==
-          LOOK.dragPointer
-      ) {
-        return;
-      }
-      const dx =
-        event.clientX - LOOK.lastX;
-      const dy =
-        event.clientY - LOOK.lastY;
-      LOOK.lastX =
-        event.clientX;
-      LOOK.lastY =
-        event.clientY;
-      /*
-        drag left  -> look left   (+yaw)
-        drag right -> look right  (-yaw)
-        drag up    -> look up     (+pitch)
-        drag down  -> look down   (-pitch)
-      */
-      LOOK.targetYaw -=
-        dx * LOOK.dragYawPerPixel;
-      LOOK.targetPitch -=
-        dy * LOOK.dragPitchPerPixel;
-      LOOK.targetPitch =
-        THREE.MathUtils.clamp(
-          LOOK.targetPitch,
-          -LOOK.maxPitch,
-          LOOK.maxPitch
-        );
-      event.preventDefault();
+    lookSurface.style.cursor = "grabbing";
+    event.preventDefault();
+  });
+
+  lookSurface.addEventListener("pointermove", event => {
+    if (LOOK.mode !== "LOOK" || event.pointerId !== LOOK.dragPointer) {
+      return;
     }
-  );
+    const dx = event.clientX - LOOK.lastX;
+    const dy = event.clientY - LOOK.lastY;
+    LOOK.lastX = event.clientX;
+    LOOK.lastY = event.clientY;
+
+    /* drag left -> look left (+yaw), drag up -> look up (+pitch) */
+    LOOK.targetYaw -= dx * LOOK.dragYawPerPixel;
+    LOOK.targetPitch -= dy * LOOK.dragPitchPerPixel;
+    LOOK.targetPitch = THREE.MathUtils.clamp(
+      LOOK.targetPitch,
+      -LOOK.maxPitch,
+      LOOK.maxPitch
+    );
+    event.preventDefault();
+  });
+
   function endLookDrag(event) {
-    if (
-      event.pointerId !==
-      LOOK.dragPointer
-    ) {
+    if (event.pointerId !== LOOK.dragPointer) {
       return;
     }
     LOOK.dragPointer = null;
-    lookSurface.style.cursor =
-      LOOK.mode === "LOOK"
-        ? "grab"
-        : "default";
+    lookSurface.style.cursor = LOOK.mode === "LOOK" ? "grab" : "default";
   }
-  lookSurface.addEventListener(
-    "pointerup",
-    endLookDrag
-  );
-  lookSurface.addEventListener(
-    "pointercancel",
-    endLookDrag
-  );
-  /* ---------------------------------------------------------
-     KEYBOARD: C toggles, Q/E/R/F look (hold).
-     Separate from the driving key handlers above.
-     --------------------------------------------------------- */
-  window.addEventListener(
-    "keydown",
-    event => {
-      /* leave browser shortcuts (Ctrl+R, Ctrl+F ...) alone */
-      if (
-        event.ctrlKey ||
-        event.metaKey ||
-        event.altKey
-      ) {
-        return;
-      }
-      const key =
-        event.key.toLowerCase();
-      if (key === "c") {
-        if (!event.repeat) {
-          toggleCameraMode();
-        }
-        return;
-      }
-      if (key === "q") {
-        LOOK.keys.left = true;
-      }
-      if (key === "e") {
-        LOOK.keys.right = true;
-      }
-      if (key === "r") {
-        LOOK.keys.up = true;
-      }
-      if (key === "f") {
-        LOOK.keys.down = true;
-      }
+
+  lookSurface.addEventListener("pointerup", endLookDrag);
+  lookSurface.addEventListener("pointercancel", endLookDrag);
+
+  /* C toggles, Q/E/R/F look (hold) */
+  window.addEventListener("keydown", event => {
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return; /* leave browser shortcuts alone */
     }
-  );
-  window.addEventListener(
-    "keyup",
-    event => {
-      const key =
-        event.key.toLowerCase();
-      if (key === "q") {
-        LOOK.keys.left = false;
+    const key = event.key.toLowerCase();
+
+    if (key === "c") {
+      if (!event.repeat) {
+        toggleCameraMode();
       }
-      if (key === "e") {
-        LOOK.keys.right = false;
-      }
-      if (key === "r") {
-        LOOK.keys.up = false;
-      }
-      if (key === "f") {
-        LOOK.keys.down = false;
-      }
+      return;
     }
-  );
-  window.addEventListener(
-    "blur",
-    () => {
-      LOOK.keys.left = false;
-      LOOK.keys.right = false;
-      LOOK.keys.up = false;
-      LOOK.keys.down = false;
-      LOOK.dragPointer = null;
-    }
-  );
-  /* ---------------------------------------------------------
-     LOOK UPDATE (called every frame)
-     --------------------------------------------------------- */
+    if (key === "q") LOOK.keys.left = true;
+    if (key === "e") LOOK.keys.right = true;
+    if (key === "r") LOOK.keys.up = true;
+    if (key === "f") LOOK.keys.down = true;
+  });
+
+  window.addEventListener("keyup", event => {
+    const key = event.key.toLowerCase();
+    if (key === "q") LOOK.keys.left = false;
+    if (key === "e") LOOK.keys.right = false;
+    if (key === "r") LOOK.keys.up = false;
+    if (key === "f") LOOK.keys.down = false;
+  });
+
+  /* losing focus (alt-tab etc.) must not leave keys stuck */
+  window.addEventListener("blur", () => {
+    clearLookKeys();
+    LOOK.dragPointer = null;
+    releaseDrivingKeys();
+  });
+
   function updateLook(delta) {
     if (LOOK.mode === "LOOK") {
-      if (LOOK.keys.left) {
-        LOOK.targetYaw +=
-          LOOK.keyYawSpeed * delta;
-      }
-      if (LOOK.keys.right) {
-        LOOK.targetYaw -=
-          LOOK.keyYawSpeed * delta;
-      }
-      if (LOOK.keys.up) {
-        LOOK.targetPitch +=
-          LOOK.keyPitchSpeed * delta;
-      }
-      if (LOOK.keys.down) {
-        LOOK.targetPitch -=
-          LOOK.keyPitchSpeed * delta;
-      }
-      LOOK.targetPitch =
-        THREE.MathUtils.clamp(
-          LOOK.targetPitch,
-          -LOOK.maxPitch,
-          LOOK.maxPitch
-        );
+      if (LOOK.keys.left) LOOK.targetYaw += LOOK.keyYawSpeed * delta;
+      if (LOOK.keys.right) LOOK.targetYaw -= LOOK.keyYawSpeed * delta;
+      if (LOOK.keys.up) LOOK.targetPitch += LOOK.keyPitchSpeed * delta;
+      if (LOOK.keys.down) LOOK.targetPitch -= LOOK.keyPitchSpeed * delta;
+
+      LOOK.targetPitch = THREE.MathUtils.clamp(
+        LOOK.targetPitch,
+        -LOOK.maxPitch,
+        LOOK.maxPitch
+      );
+
       /* horizontal look is free, but keep numbers small */
-      if (
-        Math.abs(LOOK.targetYaw) >
-        Math.PI * 4
-      ) {
+      if (Math.abs(LOOK.targetYaw) > Math.PI * 4) {
         const shift =
-          Math.round(
-            LOOK.targetYaw /
-            (Math.PI * 2)
-          ) *
-          Math.PI * 2;
+          Math.round(LOOK.targetYaw / (Math.PI * 2)) * Math.PI * 2;
         LOOK.targetYaw -= shift;
         LOOK.yaw -= shift;
       }
     }
-    const returning =
-      LOOK.mode === "DRIVE";
-    const rate =
-      returning
-        ? LOOK.returnRate
-        : LOOK.followRate;
-    const blend =
-      1 - Math.exp(-rate * delta);
-    let stepYaw =
-      (LOOK.targetYaw - LOOK.yaw) *
-      blend;
-    let stepPitch =
-      (LOOK.targetPitch - LOOK.pitch) *
-      blend;
+
+    const returning = LOOK.mode === "DRIVE";
+    const rate = returning ? LOOK.returnRate : LOOK.followRate;
+    const blend = 1 - Math.exp(-rate * delta);
+
+    let stepYaw = (LOOK.targetYaw - LOOK.yaw) * blend;
+    let stepPitch = (LOOK.targetPitch - LOOK.pitch) * blend;
+
     if (returning) {
-      /*
-        Ease home at a limited angular speed so
-        a big look angle never whips back.
-      */
-      const maxStep =
-        LOOK.maxReturnSpeed * delta;
-      stepYaw =
-        THREE.MathUtils.clamp(
-          stepYaw,
-          -maxStep,
-          maxStep
-        );
-      stepPitch =
-        THREE.MathUtils.clamp(
-          stepPitch,
-          -maxStep,
-          maxStep
-        );
+      /* ease home at a limited angular speed so a big look
+         angle never whips back */
+      const maxStep = LOOK.maxReturnSpeed * delta;
+      stepYaw = THREE.MathUtils.clamp(stepYaw, -maxStep, maxStep);
+      stepPitch = THREE.MathUtils.clamp(stepPitch, -maxStep, maxStep);
     }
+
     LOOK.yaw += stepYaw;
     LOOK.pitch += stepPitch;
-    LOOK.pitch =
-      THREE.MathUtils.clamp(
-        LOOK.pitch,
-        -LOOK.maxPitch,
-        LOOK.maxPitch
-      );
+    LOOK.pitch = THREE.MathUtils.clamp(
+      LOOK.pitch,
+      -LOOK.maxPitch,
+      LOOK.maxPitch
+    );
+
     if (
       LOOK.mode === "DRIVE" &&
       Math.abs(LOOK.yaw) < 0.0005 &&
@@ -1256,1128 +690,665 @@
       LOOK.pitch = 0;
     }
   }
+
   updateCameraPanel();
+
   /* =========================================================
-     STEP 4 — CITY DISCOVERY
+     CITY DISCOVERY
      Locations sit on EXISTING city buildings from the
-     generator (track.destinations), so no new buildings are
-     created. Each gets one cheap glowing beacon so it can be
-     spotted from far away.
-     NOTE: the names below are only attached to those buildings
-     here — change the table to re-map them.
+     generator (track.destinations). Each gets one cheap glowing
+     beacon so it can be spotted from far away.
+     Change the table to re-map names to buildings.
      ========================================================= */
   const LOCATION_DEFS = [
-    {
-      id: "tech_hub",
-      name: "TECH HUB",
-      type: "quest",
-      buildingType: "radio_station"
-    },
-    {
-      id: "garage",
-      name: "GARAGE",
-      type: "garage",
-      buildingType: "auto_shop"
-    },
-    {
-      id: "studio",
-      name: "STUDIO",
-      type: "studio",
-      buildingType: "record_store"
-    },
-    {
-      id: "shop",
-      name: "SHOP",
-      type: "shop",
-      buildingType: "clothing_store"
-    },
-    {
-      id: "office",
-      name: "OFFICE",
-      type: "office",
-      buildingType: "bank"
-    }
+    { id: "tech_hub", name: "TECH HUB", type: "quest", buildingType: "radio_station" },
+    { id: "garage", name: "GARAGE", type: "garage", buildingType: "auto_shop" },
+    { id: "studio", name: "STUDIO", type: "studio", buildingType: "record_store" },
+    { id: "shop", name: "SHOP", type: "shop", buildingType: "clothing_store" },
+    { id: "office", name: "OFFICE", type: "office", buildingType: "bank" }
   ];
+
   const DISCOVERY = {
-    /* metres from the building footprint */
-    arriveRadius: 45,
+    arriveRadius: 45,   /* metres from the building footprint */
     discoverRadius: 18,
     questTargetId: "tech_hub",
-    /* "none" -> "active" -> "complete" */
-    questState: "none",
+    questState: "none", /* "none" -> "active" -> "complete" */
     beaconHeight: 70,
     time: 0,
     queue: [],
     bannerTimer: 0,
     bannerGap: 0
   };
+
   const BEACON_COLORS = {
     undiscovered: 0x00eaff,
     quest: 0xff2bd6,
     discovered: 0x22ff66
   };
+
   const LOCATIONS = [];
-  LOCATION_DEFS.forEach(
-    definition => {
-      const building =
-        (track.destinations || [])
-          .find(
-            candidate =>
-              candidate.userData &&
-              candidate.userData
-                .buildingType ===
-                definition.buildingType
-          );
-      if (
-        !building ||
-        !building.geometry ||
-        !building.geometry.parameters
-      ) {
-        console.warn(
-          "CodeQuestER: no building for location " +
-          definition.id
-        );
-        return;
-      }
-      const size =
-        building.geometry.parameters;
-      const beacon =
-        new THREE.Mesh(
-          new THREE.CylinderGeometry(
-            0.7,
-            0.7,
-            DISCOVERY.beaconHeight,
-            8,
-            1,
-            true
-          ),
-          new THREE.MeshBasicMaterial({
-            color:
-              BEACON_COLORS
-                .undiscovered,
-            transparent: true,
-            opacity: 0.55,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-            fog: false
-          })
-        );
-      beacon.position.set(
-        building.position.x,
-        size.height +
-          DISCOVERY.beaconHeight / 2,
-        building.position.z
+
+  LOCATION_DEFS.forEach(definition => {
+    const building = (track.destinations || []).find(
+      candidate =>
+        candidate.userData &&
+        candidate.userData.buildingType === definition.buildingType
+    );
+
+    if (!building || !building.geometry || !building.geometry.parameters) {
+      console.warn(
+        "CodeQuestER: no building for location " + definition.id
       );
-      beacon.name =
-        "LocationBeacon_" +
-        definition.id;
-      beacon.userData = {
-        type: "locationBeacon",
-        locationId: definition.id
-      };
-      scene.add(beacon);
-      LOCATIONS.push({
-        id: definition.id,
-        name: definition.name,
-        type: definition.type,
-        position:
-          new THREE.Vector3(
-            building.position.x,
-            0,
-            building.position.z
-          ),
-        halfWidth:
-          size.width / 2,
-        halfDepth:
-          size.depth / 2,
-        discovered: false,
-        beacon
-      });
+      return;
     }
-  );
-  /* ---------------------------------------------------------
-     HELPERS (also used by the HUD)
-     --------------------------------------------------------- */
+
+    const size = building.geometry.parameters;
+
+    const beacon = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.7, 0.7, DISCOVERY.beaconHeight, 8, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: BEACON_COLORS.undiscovered,
+        transparent: true,
+        opacity: 0.55,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        fog: false
+      })
+    );
+    beacon.position.set(
+      building.position.x,
+      size.height + DISCOVERY.beaconHeight / 2,
+      building.position.z
+    );
+    beacon.name = "LocationBeacon_" + definition.id;
+    beacon.userData = { type: "locationBeacon", locationId: definition.id };
+    scene.add(beacon);
+
+    LOCATIONS.push({
+      id: definition.id,
+      name: definition.name,
+      type: definition.type,
+      position: new THREE.Vector3(building.position.x, 0, building.position.z),
+      halfWidth: size.width / 2,
+      halfDepth: size.depth / 2,
+      discovered: false,
+      beacon
+    });
+  });
+
   function discoveredCount() {
     let count = 0;
-    for (
-      let i = 0;
-      i < LOCATIONS.length;
-      i++
-    ) {
+    for (let i = 0; i < LOCATIONS.length; i++) {
       if (LOCATIONS[i].discovered) {
         count++;
       }
     }
     return count;
   }
+
   function findLocation(id) {
-    for (
-      let i = 0;
-      i < LOCATIONS.length;
-      i++
-    ) {
+    for (let i = 0; i < LOCATIONS.length; i++) {
       if (LOCATIONS[i].id === id) {
         return LOCATIONS[i];
       }
     }
     return null;
   }
+
+  /* If the Tech Hub building is missing, the quest falls back to
+     the first location that did resolve instead of never starting. */
+  if (!findLocation(DISCOVERY.questTargetId) && LOCATIONS.length > 0) {
+    console.warn(
+      "CodeQuestER: quest target missing, using " + LOCATIONS[0].id
+    );
+    DISCOVERY.questTargetId = LOCATIONS[0].id;
+  }
+
+  function questTargetName() {
+    const target = findLocation(DISCOVERY.questTargetId);
+    return target ? target.name : "TECH HUB";
+  }
+
+  function prettyName(name) {
+    return name.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  }
+
   function questHudText() {
-    if (
-      DISCOVERY.questState ===
-      "active"
-    ) {
-      return "FIND TECH HUB";
+    if (DISCOVERY.questState === "active") {
+      return "FIND " + questTargetName();
     }
-    if (
-      DISCOVERY.questState ===
-      "complete"
-    ) {
+    if (DISCOVERY.questState === "complete") {
       return "COMPLETE";
     }
     return "NONE";
   }
-  /*
-    Distance from the car to the edge of the
-    building footprint (0 when inside it).
-  */
-  function distanceToLocation(
-    location
-  ) {
-    const dx =
-      Math.max(
-        Math.abs(
-          car.position.x -
-          location.position.x
-        ) - location.halfWidth,
-        0
-      );
-    const dz =
-      Math.max(
-        Math.abs(
-          car.position.z -
-          location.position.z
-        ) - location.halfDepth,
-        0
-      );
-    return Math.sqrt(
-      dx * dx + dz * dz
+
+  /* distance from the car to the edge of the building footprint
+     (0 when inside it) */
+  function distanceToLocation(location) {
+    const dx = Math.max(
+      Math.abs(car.position.x - location.position.x) - location.halfWidth,
+      0
     );
+    const dz = Math.max(
+      Math.abs(car.position.z - location.position.z) - location.halfDepth,
+      0
+    );
+    return Math.sqrt(dx * dx + dz * dz);
   }
-  /* ---------------------------------------------------------
-     BANNER (queued, so back-to-back messages never overwrite
-     each other or the existing boost / jump messages)
-     --------------------------------------------------------- */
-  const banner =
-    document.createElement("div");
-  banner.style.position =
-    "fixed";
-  banner.style.left =
-    "50%";
-  banner.style.top =
-    "30%";
-  banner.style.transform =
-    "translate(-50%, -50%)";
-  banner.style.zIndex =
-    "31";
-  banner.style.fontFamily =
-    "Arial, sans-serif";
-  banner.style.color =
-    "#ffffff";
-  banner.style.textAlign =
-    "center";
-  banner.style.textShadow =
-    "0 0 14px #00eaff";
-  banner.style.pointerEvents =
-    "none";
-  banner.style.opacity =
-    "0";
-  banner.style.transition =
-    "opacity 0.25s";
-  const bannerHead =
-    document.createElement("div");
-  bannerHead.style.fontSize =
-    "14px";
-  bannerHead.style.letterSpacing =
-    "3px";
-  bannerHead.style.color =
-    "#00eaff";
-  const bannerBody =
-    document.createElement("div");
-  bannerBody.style.fontSize =
-    "24px";
-  bannerBody.style.fontWeight =
-    "bold";
+
+  /* banner (queued, so back-to-back messages never overwrite
+     each other or the boost / jump messages) */
+  const banner = document.createElement("div");
+  banner.style.cssText =
+    "position:fixed;left:50%;top:30%;transform:translate(-50%,-50%);" +
+    "z-index:31;font-family:Arial,sans-serif;color:#fff;text-align:center;" +
+    "text-shadow:0 0 14px #00eaff;pointer-events:none;opacity:0;" +
+    "transition:opacity .25s;";
+
+  const bannerHead = document.createElement("div");
+  bannerHead.style.cssText =
+    "font-size:14px;letter-spacing:3px;color:#00eaff;";
+  const bannerBody = document.createElement("div");
+  bannerBody.style.cssText = "font-size:24px;font-weight:bold;";
+
   banner.appendChild(bannerHead);
   banner.appendChild(bannerBody);
-  document.body.appendChild(
-    banner
-  );
-  function enqueueBanner(
-    head,
-    body,
-    seconds
-  ) {
-    DISCOVERY.queue.push({
-      head,
-      body,
-      seconds
-    });
+  document.body.appendChild(banner);
+
+  function enqueueBanner(head, body, seconds) {
+    DISCOVERY.queue.push({ head, body, seconds });
   }
+
   function updateBanner(delta) {
     if (DISCOVERY.bannerTimer > 0) {
-      DISCOVERY.bannerTimer -=
-        delta;
-      if (
-        DISCOVERY.bannerTimer <= 0
-      ) {
+      DISCOVERY.bannerTimer -= delta;
+      if (DISCOVERY.bannerTimer <= 0) {
         banner.style.opacity = "0";
         DISCOVERY.bannerGap = 0.35;
       }
       return;
     }
+
     if (DISCOVERY.bannerGap > 0) {
       DISCOVERY.bannerGap -= delta;
       return;
     }
+
     if (DISCOVERY.queue.length > 0) {
-      const next =
-        DISCOVERY.queue.shift();
-      bannerHead.textContent =
-        next.head;
-      bannerBody.textContent =
-        next.body;
+      const next = DISCOVERY.queue.shift();
+      bannerHead.textContent = next.head;
+      bannerBody.textContent = next.body;
       banner.style.opacity = "1";
-      DISCOVERY.bannerTimer =
-        next.seconds;
+      DISCOVERY.bannerTimer = next.seconds;
     }
   }
-  /* ---------------------------------------------------------
-     DISCOVERY + QUEST HOOK
-     DRIVE -> DISCOVER -> QUEST -> COMPLETE
-     --------------------------------------------------------- */
+
+  /* DRIVE -> DISCOVER -> QUEST -> COMPLETE */
   function refreshBeaconColors() {
-    for (
-      let i = 0;
-      i < LOCATIONS.length;
-      i++
-    ) {
-      const location =
-        LOCATIONS[i];
-      let color =
-        BEACON_COLORS.undiscovered;
+    for (let i = 0; i < LOCATIONS.length; i++) {
+      const location = LOCATIONS[i];
+      let color = BEACON_COLORS.undiscovered;
+
       if (location.discovered) {
-        color =
-          BEACON_COLORS.discovered;
+        color = BEACON_COLORS.discovered;
       } else if (
-        DISCOVERY.questState ===
-          "active" &&
-        location.id ===
-          DISCOVERY.questTargetId
+        DISCOVERY.questState === "active" &&
+        location.id === DISCOVERY.questTargetId
       ) {
-        color =
-          BEACON_COLORS.quest;
+        color = BEACON_COLORS.quest;
       }
-      location.beacon.material
-        .color.setHex(color);
+      location.beacon.material.color.setHex(color);
     }
   }
+
   function completeQuest() {
-    DISCOVERY.questState =
-      "complete";
-    enqueueBanner(
-      "QUEST COMPLETE",
-      "TECH HUB DISCOVERED",
-      3
-    );
+    DISCOVERY.questState = "complete";
+    enqueueBanner("QUEST COMPLETE", questTargetName() + " DISCOVERED", 3);
   }
-  function discoverLocation(
-    location
-  ) {
+
+  function discoverLocation(location) {
     location.discovered = true;
-    enqueueBanner(
-      "LOCATION DISCOVERED",
-      location.name,
-      2.4
-    );
-    const questTarget =
-      findLocation(
-        DISCOVERY.questTargetId
-      );
+    enqueueBanner("LOCATION DISCOVERED", location.name, 2.4);
+
+    const questTarget = findLocation(DISCOVERY.questTargetId);
+
     if (questTarget) {
-      if (
-        DISCOVERY.questState ===
-        "none"
-      ) {
-        if (
-          location === questTarget
-        ) {
-          /* first find happens to be the Tech Hub */
+      if (DISCOVERY.questState === "none") {
+        if (location === questTarget) {
+          /* first find happens to be the quest target */
           completeQuest();
         } else {
-          DISCOVERY.questState =
-            "active";
+          DISCOVERY.questState = "active";
           enqueueBanner(
             "NEW QUEST",
-            "Find the Tech Hub.",
+            "Find the " + prettyName(questTarget.name) + ".",
             3
           );
         }
       } else if (
-        DISCOVERY.questState ===
-          "active" &&
+        DISCOVERY.questState === "active" &&
         location === questTarget
       ) {
         completeQuest();
       }
     }
-    if (
-      discoveredCount() ===
-      LOCATIONS.length
-    ) {
-      enqueueBanner(
-        "CITY DISCOVERY",
-        "ALL LOCATIONS DISCOVERED",
-        3
-      );
+
+    if (discoveredCount() === LOCATIONS.length) {
+      enqueueBanner("CITY DISCOVERY", "ALL LOCATIONS DISCOVERED", 3);
     }
+
     refreshBeaconColors();
   }
+
   let objectiveHTML = "";
+
   function setObjective(html) {
     if (html === objectiveHTML) {
       return;
     }
     objectiveHTML = html;
-    objectivePanel.innerHTML =
-      html;
-    objectivePanel.style.display =
-      html ? "block" : "none";
+    objectivePanel.innerHTML = html;
+    objectivePanel.style.display = html ? "block" : "none";
   }
+
   function updateDiscovery(delta) {
     DISCOVERY.time += delta;
+
     /* gentle beacon pulse (undiscovered only) */
-    const pulse =
-      0.45 +
-      0.2 *
-        Math.sin(
-          DISCOVERY.time * 3
-        );
+    const pulse = 0.45 + 0.2 * Math.sin(DISCOVERY.time * 3);
+
     let nearest = null;
-    let nearestDistance =
-      Infinity;
-    for (
-      let i = 0;
-      i < LOCATIONS.length;
-      i++
-    ) {
-      const location =
-        LOCATIONS[i];
+    let nearestDistance = Infinity;
+
+    for (let i = 0; i < LOCATIONS.length; i++) {
+      const location = LOCATIONS[i];
+
       if (location.discovered) {
-        location.beacon.material
-          .opacity = 0.3;
+        location.beacon.material.opacity = 0.3;
         continue;
       }
-      location.beacon.material
-        .opacity = pulse;
-      const distance =
-        distanceToLocation(
-          location
-        );
-      if (
-        distance <=
-        DISCOVERY.discoverRadius
-      ) {
+
+      location.beacon.material.opacity = pulse;
+
+      const distance = distanceToLocation(location);
+
+      if (distance <= DISCOVERY.discoverRadius) {
         discoverLocation(location);
         continue;
       }
-      if (
-        distance < nearestDistance
-      ) {
+
+      if (distance < nearestDistance) {
         nearestDistance = distance;
         nearest = location;
       }
     }
-    /*
-      Objective readout: the quest target while
-      the quest is active, otherwise the nearest
-      undiscovered location.
-    */
+
+    /* objective readout: the quest target while the quest is
+       active, otherwise the nearest undiscovered location */
     let target = nearest;
-    if (
-      DISCOVERY.questState ===
-      "active"
-    ) {
-      const questTarget =
-        findLocation(
-          DISCOVERY.questTargetId
-        );
-      if (
-        questTarget &&
-        !questTarget.discovered
-      ) {
+
+    if (DISCOVERY.questState === "active") {
+      const questTarget = findLocation(DISCOVERY.questTargetId);
+      if (questTarget && !questTarget.discovered) {
         target = questTarget;
       }
     }
-    if (
-      target &&
-      !target.discovered
-    ) {
-      const distance =
-        distanceToLocation(target);
+
+    if (target && !target.discovered) {
+      const distance = distanceToLocation(target);
       const text =
-        distance <=
-        DISCOVERY.arriveRadius
+        distance <= DISCOVERY.arriveRadius
           ? "ARRIVING"
-          : Math.round(distance) +
-            "m";
-      setObjective(
-        target.name +
-        "<br>" +
-        text
-      );
+          : Math.round(distance) + "m";
+      setObjective(target.name + "<br>" + text);
     } else {
       setObjective("");
     }
+
     updateBanner(delta);
   }
+
   refreshBeaconColors();
+
   /* =========================================================
-     FIND CLOSEST TRACK POINT
-     =========================================================
-     IMPORTANT:
-     This no longer controls the car's
-     physical position.
-     It is informational only.
-     The player is free to leave
-     the road and explore the world.
+     CLOSEST TRACK POINT
+     Informational only: it does NOT restrict movement.
      ========================================================= */
   function findClosestWaypoint() {
-    let closest =
-      GAME.trackIndex;
-    let closestDistance =
-      Infinity;
-    /*
-      Search locally rather than
-      checking every waypoint
-      every frame.
-    */
+    let closest = GAME.trackIndex;
+    let closestDistance = Infinity;
     const searchRadius = 35;
-    for (
-      let offset = -searchRadius;
-      offset <= searchRadius;
-      offset++
-    ) {
+
+    for (let offset = -searchRadius; offset <= searchRadius; offset++) {
       const index =
-        (
-          GAME.trackIndex +
-          offset +
-          TRACK_COUNT
-        ) %
-        TRACK_COUNT;
-      const point =
-        waypoints[index];
-      const dx =
-        car.position.x -
-        point.x;
-      const dz =
-        car.position.z -
-        point.z;
-      const distance =
-        dx * dx +
-        dz * dz;
-      if (
-        distance <
-        closestDistance
-      ) {
-        closestDistance =
-          distance;
-        closest =
-          index;
+        (GAME.trackIndex + offset + TRACK_COUNT) % TRACK_COUNT;
+      const point = waypoints[index];
+      const dx = car.position.x - point.x;
+      const dz = car.position.z - point.z;
+      const distance = dx * dx + dz * dz;
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closest = index;
       }
     }
-    GAME.trackIndex =
-      closest;
+
+    GAME.trackIndex = closest;
   }
+
   /* =========================================================
      STEERING
+     k = frame scale (1 at 60fps, 0.5 at 120fps)
      ========================================================= */
-  function updateSteering() {
+  function updateSteering(k) {
     let input = 0;
+
     if (GAME.keys.left) {
       input -= 1;
     }
     if (GAME.keys.right) {
       input += 1;
     }
+
     /* On-screen steering wheel (drivercontrols.js) sets this to a
        number from -1 (full left) to +1 (full right) while in use,
        and back to null when idle so the keys work as before. */
     if (typeof GAME.analogSteer === "number") {
-      input = THREE.MathUtils.clamp(
-        GAME.analogSteer,
-        -1,
-        1
-      );
+      input = THREE.MathUtils.clamp(GAME.analogSteer, -1, 1);
     }
-    GAME.steeringTarget =
-      input;
-    GAME.steering =
-      THREE.MathUtils.lerp(
-        GAME.steering,
-        GAME.steeringTarget,
-        0.14
-      );
-    /*
-      Steering gets slightly
-      stronger at higher speed.
-    */
-    const speedFactor =
-      THREE.MathUtils.clamp(
-        Math.abs(GAME.speed) /
-          GAME.maxSpeed,
-        0.25,
-        1
-      );
-    const steeringAmount =
-      GAME.steering *
-      GAME.steeringPower *
-      speedFactor;
-    /*
-      Rotate the vehicle around
-      its own vertical axis.
-    */
-    /* Car faces local -Z, so +rotation.y turns LEFT.
-       steering is +1 = right, so subtract. */
-    car.rotation.y -=
-      steeringAmount;
-    /*
-      Front wheel visual steering.
-    */
-    frontWheels.forEach(
-      wheel => {
-        wheel.rotation.y = GAME.steering * 0.45;
-      }
+
+    GAME.steeringTarget = input;
+    GAME.steering = THREE.MathUtils.lerp(
+      GAME.steering,
+      GAME.steeringTarget,
+      1 - Math.pow(1 - 0.14, k)
     );
+
+    /* steering gets slightly stronger at higher speed */
+    const speedFactor = THREE.MathUtils.clamp(
+      Math.abs(GAME.speed) / GAME.maxSpeed,
+      0.25,
+      1
+    );
+    const steeringAmount =
+      GAME.steering * GAME.steeringPower * speedFactor * k;
+
+    /* The car faces local -Z, so +rotation.y turns LEFT and
+       steering +1 means right. STEER_SIGN (top of file) flips
+       the result if it ever looks backwards on screen. */
+    car.rotation.y -= steeringAmount * STEER_SIGN;
+
+    /* front wheel visual steering */
+    frontWheels.forEach(wheel => {
+      wheel.rotation.y = -GAME.steering * 0.45 * STEER_SIGN;
+    });
   }
+
   /* =========================================================
      CAR MOVEMENT
      ========================================================= */
-  function updateCar(delta) {
-    /* -------------------------------------------------------
-       ACCELERATION
-       ------------------------------------------------------- */
+  const moveForward = new THREE.Vector3();
+
+  function updateCar(delta, k) {
     if (GAME.keys.forward) {
-      GAME.speed +=
-        GAME.acceleration;
+      GAME.speed += GAME.acceleration * k;
     }
-    /* -------------------------------------------------------
-       BRAKING / REVERSE
-       ------------------------------------------------------- */
+
     if (GAME.keys.backward) {
       if (GAME.speed > 0) {
-        GAME.speed -=
-          GAME.braking;
+        GAME.speed -= GAME.braking * k;
       } else {
-        GAME.speed -=
-          GAME.acceleration *
-          0.6;
+        GAME.speed -= GAME.acceleration * 0.6 * k;
       }
     }
-    /* -------------------------------------------------------
-       FRICTION
-       ------------------------------------------------------- */
-    if (
-      !GAME.keys.forward &&
-      !GAME.keys.backward
-    ) {
+
+    if (!GAME.keys.forward && !GAME.keys.backward) {
       if (GAME.speed > 0) {
-        GAME.speed =
-          Math.max(
-            0,
-            GAME.speed -
-              GAME.friction
-          );
-      } else if (
-        GAME.speed < 0
-      ) {
-        GAME.speed =
-          Math.min(
-            0,
-            GAME.speed +
-              GAME.friction
-          );
+        GAME.speed = Math.max(0, GAME.speed - GAME.friction * k);
+      } else if (GAME.speed < 0) {
+        GAME.speed = Math.min(0, GAME.speed + GAME.friction * k);
       }
     }
-    /* -------------------------------------------------------
-       BOOST
-       ------------------------------------------------------- */
-    if (
-      GAME.boostTimer > 0
-    ) {
-      GAME.boostTimer -=
-        delta;
-      GAME.boostPower =
-        1.45;
+
+    if (GAME.boostTimer > 0) {
+      GAME.boostTimer -= delta;
+      GAME.boostPower = 1.45;
     } else {
-      GAME.boostPower =
-        1;
+      GAME.boostPower = 1;
     }
-    GAME.speed =
-      THREE.MathUtils.clamp(
-        GAME.speed,
-        -GAME.reverseSpeed,
-        GAME.maxSpeed *
-          GAME.boostPower
-      );
-    updateSteering();
-    /* -------------------------------------------------------
-       MOVE CAR
-       -------------------------------------------------------
-       FREE DRIVING ENABLED.
-       There is intentionally NO code here
-       that pulls the vehicle back toward
-       the generated road.
-       The car can now travel anywhere
-       on the generated world floor.
-       ------------------------------------------------------- */
-    const forward =
-      new THREE.Vector3(
-        0,
-        0,
-        -1
-      );
-    forward.applyQuaternion(
-      car.quaternion
+
+    GAME.speed = THREE.MathUtils.clamp(
+      GAME.speed,
+      -GAME.reverseSpeed,
+      GAME.maxSpeed * GAME.boostPower
     );
-    car.position.addScaledVector(
-      forward,
-      GAME.speed
-    );
-    /* -------------------------------------------------------
-       WHEEL ROTATION
-       ------------------------------------------------------- */
-    wheels.forEach(
-      wheel => {
-        wheel.rotation.x -=
-          GAME.speed * 2.2;
-      }
-    );
-    /* -------------------------------------------------------
-       DISTANCE
-       ------------------------------------------------------- */
-    GAME.distance +=
-      Math.abs(
-        GAME.speed
-      );
-    /* -------------------------------------------------------
-       TRACK POSITION
-       -------------------------------------------------------
-       Informational only.
-       This does NOT restrict movement.
-       ------------------------------------------------------- */
+
+    updateSteering(k);
+
+    /* FREE DRIVING: nothing pulls the car back to the road. */
+    moveForward.set(0, 0, -1).applyQuaternion(car.quaternion);
+    car.position.addScaledVector(moveForward, GAME.speed * k);
+
+    wheels.forEach(wheel => {
+      wheel.rotation.x -= GAME.speed * 2.2 * k;
+    });
+
+    GAME.distance += Math.abs(GAME.speed) * k;
+
     findClosestWaypoint();
   }
+
   /* =========================================================
-     ZONE DETECTION
+     ZONES, BOOSTS, RAMPS
      ========================================================= */
-  function checkInteractiveObjects() {
-    const carXZ =
-      new THREE.Vector2(
-        car.position.x,
-        car.position.z
-      );
-    track.zones.forEach(
-      object => {
-        if (
-          !object.userData ||
-          !object.userData.active
-        ) {
-          return;
-        }
-        const distance =
-          carXZ.distanceTo(
-            new THREE.Vector2(
-              object.position.x,
-              object.position.z
-            )
-          );
-        if (
-          distance >
-          ROAD_WIDTH * 0.65
-        ) {
-          return;
-        }
-        /* ---------------------------------------------------
-           COLOR ZONE
-           --------------------------------------------------- */
-        if (
-          object.userData.type ===
-          "colorZone"
-        ) {
-          applyColorBoost(
-            object
-          );
-          object.userData.active =
-            false;
-        }
-        /* ---------------------------------------------------
-           SPEED BOOST
-           --------------------------------------------------- */
-        if (
-          object.userData.type ===
-          "speedBoost"
-        ) {
-          GAME.boostTimer =
-            3.0;
-          GAME.score +=
-            50;
-          showMessage(
-            "SPEED BOOST"
-          );
-          object.userData.active =
-            false;
-          object.scale.y =
-            0.35;
-        }
-      }
-    );
-    /* -------------------------------------------------------
-       RAMPS
-       ------------------------------------------------------- */
-    track.ramps.forEach(
-      ramp => {
-        const distance =
-          carXZ.distanceTo(
-            new THREE.Vector2(
-              ramp.position.x,
-              ramp.position.z
-            )
-          );
-        if (
-          distance < 4 &&
-          !GAME.airborne &&
-          Math.abs(
-            GAME.speed
-          ) > 0.25
-        ) {
-          jumpCar();
-        }
-      }
-    );
-  }
-  /* =========================================================
-     COLOR BOOST
-     Translation of ColorZone.cs behavior
-     ========================================================= */
-  function applyColorBoost(
-    zone
-  ) {
-    const color =
-      zone.userData.color;
-    switch (color) {
+  let flashTimer = null;
+
+  /* Translation of ColorZone.cs behavior */
+  function applyColorBoost(zone) {
+    switch (zone.userData.color) {
       case "RED":
-        GAME.maxSpeed =
-          Math.min(
-            GAME.maxSpeed +
-              0.08,
-            1.05
-          );
-        GAME.score +=
-          100;
-        showMessage(
-          "RED BOOST"
-        );
+        GAME.maxSpeed = Math.min(GAME.maxSpeed + 0.08, 1.05);
+        GAME.score += 100;
+        showMessage("RED BOOST");
         break;
       case "GREEN":
-        GAME.acceleration =
-          Math.min(
-            GAME.acceleration +
-              0.002,
-            0.028
-          );
-        GAME.score +=
-          100;
-        showMessage(
-          "GREEN BOOST"
-        );
+        GAME.acceleration = Math.min(GAME.acceleration + 0.002, 0.028);
+        GAME.score += 100;
+        showMessage("GREEN BOOST");
         break;
       case "BLUE":
-        GAME.steeringPower =
-          Math.min(
-            GAME.steeringPower +
-              0.004,
-            0.055
-          );
-        GAME.score +=
-          100;
-        showMessage(
-          "BLUE BOOST"
-        );
+        GAME.steeringPower = Math.min(GAME.steeringPower + 0.004, 0.055);
+        GAME.score += 100;
+        showMessage("BLUE BOOST");
         break;
     }
-    /*
-      Flash the car with
-      the zone color.
-    */
-    const original =
-      bodyMaterial.color.getHex();
-    bodyMaterial.color.setHex(
-      zone.userData.boostColor
-    );
-    setTimeout(
-      () => {
-        bodyMaterial.color.setHex(
-          original
-        );
-      },
-      450
-    );
+
+    /* flash the car with the zone color, then always return to the
+       real base color (never to a previous flash color) */
+    bodyMaterial.color.setHex(zone.userData.boostColor);
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => {
+      bodyMaterial.color.setHex(BODY_BASE_COLOR);
+    }, 450);
   }
-  /* =========================================================
-     JUMP SYSTEM
-     ========================================================= */
+
   function jumpCar() {
-    GAME.airborne =
-      true;
-    GAME.jumpVelocity =
-      0.26;
-    GAME.score +=
-      75;
-    showMessage(
-      "JUMP!"
-    );
+    GAME.airborne = true;
+    GAME.jumpVelocity = 0.26;
+    GAME.score += 75;
+    showMessage("JUMP!");
   }
-  function updateJump() {
+
+  function updateJump(k) {
     if (!GAME.airborne) {
       return;
     }
-    car.position.y +=
-      GAME.jumpVelocity;
-    GAME.jumpVelocity -=
-      0.018;
-    if (
-      car.position.y <= 0
-    ) {
-      car.position.y =
-        0;
-      GAME.airborne =
-        false;
-      GAME.jumpVelocity =
-        0;
+
+    car.position.y += GAME.jumpVelocity * k;
+    GAME.jumpVelocity -= 0.018 * k;
+
+    if (car.position.y <= 0) {
+      car.position.y = 0;
+      GAME.airborne = false;
+      GAME.jumpVelocity = 0;
     }
   }
+
+  function checkInteractiveObjects() {
+    const cx = car.position.x;
+    const cz = car.position.z;
+
+    track.zones.forEach(object => {
+      if (!object.userData || !object.userData.active) {
+        return;
+      }
+
+      const distance = Math.hypot(
+        cx - object.position.x,
+        cz - object.position.z
+      );
+
+      if (distance > ROAD_WIDTH * 0.65) {
+        return;
+      }
+
+      if (object.userData.type === "colorZone") {
+        applyColorBoost(object);
+        object.userData.active = false;
+      }
+
+      if (object.userData.type === "speedBoost") {
+        GAME.boostTimer = 3.0;
+        GAME.score += 50;
+        showMessage("SPEED BOOST");
+        object.userData.active = false;
+        object.scale.y = 0.35;
+      }
+    });
+
+    track.ramps.forEach(ramp => {
+      const distance = Math.hypot(
+        cx - ramp.position.x,
+        cz - ramp.position.z
+      );
+
+      if (distance < 4 && !GAME.airborne && Math.abs(GAME.speed) > 0.25) {
+        jumpCar();
+      }
+    });
+  }
+
   /* =========================================================
      LAP DETECTION
+     Only meaningful when actually driving around the track.
      ========================================================= */
   function updateLap() {
-    const current =
-      GAME.trackIndex;
-    /*
-      Detect crossing from the
-      end of the waypoint array
-      back to the beginning.
-      NOTE:
-      Because free driving is now
-      enabled, lap detection is only
-      meaningful when the player is
-      actually driving around the track.
-    */
+    const current = GAME.trackIndex;
+
     if (
-      GAME.lastTrackIndex >
-        TRACK_COUNT * 0.8 &&
-      current <
-        TRACK_COUNT * 0.2
+      GAME.lastTrackIndex > TRACK_COUNT * 0.8 &&
+      current < TRACK_COUNT * 0.2
     ) {
       GAME.lap++;
-      GAME.score +=
-        500;
-      showMessage(
-        "LAP COMPLETE"
-      );
+      GAME.score += 500;
+      showMessage("LAP COMPLETE");
     }
-    GAME.lastTrackIndex =
-      current;
+
+    GAME.lastTrackIndex = current;
   }
+
   /* =========================================================
      CAMERA
      ========================================================= */
-  const cameraPosition =
-    new THREE.Vector3();
-  const cameraTarget =
-    new THREE.Vector3();
-  /*
-    FREE-LOOK: rotate the existing driving view
-    by the player's look yaw / pitch. In DRIVE
-    mode both offsets settle at 0, so the normal
-    driving camera is unchanged.
-  */
+  const cameraPosition = new THREE.Vector3();
+  const cameraTarget = new THREE.Vector3();
+  const cameraForward = new THREE.Vector3();
+
+  /* Rotate the existing driving view by the player's look yaw /
+     pitch. In DRIVE mode both settle at 0, so the normal driving
+     camera is unchanged. */
   function applyLookOffset() {
-    if (
-      Math.abs(LOOK.yaw) < 0.0001 &&
-      Math.abs(LOOK.pitch) < 0.0001
-    ) {
+    if (Math.abs(LOOK.yaw) < 0.0001 && Math.abs(LOOK.pitch) < 0.0001) {
       return;
     }
-    const dx =
-      cameraTarget.x -
-      camera.position.x;
-    const dy =
-      cameraTarget.y -
-      camera.position.y;
-    const dz =
-      cameraTarget.z -
-      camera.position.z;
-    const length =
-      Math.sqrt(
-        dx * dx +
-        dy * dy +
-        dz * dz
-      ) || 1;
-    /*
-      Yaw 0 = looking along -Z, positive yaw
-      turns toward -X (the player's left).
-    */
-    const baseYaw =
-      Math.atan2(-dx, -dz);
-    const basePitch =
-      Math.asin(
-        THREE.MathUtils.clamp(
-          dy / length,
-          -1,
-          1
-        )
-      );
-    const yaw =
-      baseYaw + LOOK.yaw;
-    /*
-      Never reach straight up / down, so the
-      camera cannot flip upside down.
-    */
-    const pitch =
-      THREE.MathUtils.clamp(
-        basePitch + LOOK.pitch,
-        -1.4,
-        1.4
-      );
-    const flat =
-      Math.cos(pitch);
+
+    const dx = cameraTarget.x - camera.position.x;
+    const dy = cameraTarget.y - camera.position.y;
+    const dz = cameraTarget.z - camera.position.z;
+    const length = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+
+    /* yaw 0 = looking along -Z, positive yaw turns toward -X
+       (the player's left) */
+    const baseYaw = Math.atan2(-dx, -dz);
+    const basePitch = Math.asin(THREE.MathUtils.clamp(dy / length, -1, 1));
+
+    const yaw = baseYaw + LOOK.yaw;
+
+    /* never reach straight up / down, so the camera cannot flip */
+    const pitch = THREE.MathUtils.clamp(basePitch + LOOK.pitch, -1.4, 1.4);
+    const flat = Math.cos(pitch);
+
     cameraTarget.set(
-      camera.position.x -
-        Math.sin(yaw) * flat * length,
-      camera.position.y +
-        Math.sin(pitch) * length,
-      camera.position.z -
-        Math.cos(yaw) * flat * length
+      camera.position.x - Math.sin(yaw) * flat * length,
+      camera.position.y + Math.sin(pitch) * length,
+      camera.position.z - Math.cos(yaw) * flat * length
     );
   }
-  function updateCamera() {
-    const forward =
-      new THREE.Vector3(
-        0,
-        0,
-        -1
-      );
-    forward.applyQuaternion(
-      car.quaternion
-    );
-    cameraPosition.copy(
-      car.position
-    );
-    cameraPosition.addScaledVector(
-      forward,
-      -10
-    );
-    cameraPosition.y +=
-      5.5;
-    camera.position.lerp(
-      cameraPosition,
-      0.08
-    );
-    cameraTarget.copy(
-      car.position
-    );
-    cameraTarget.addScaledVector(
-      forward,
-      8
-    );
-    cameraTarget.y +=
-      1;
+
+  function updateCamera(k) {
+    cameraForward.set(0, 0, -1).applyQuaternion(car.quaternion);
+
+    cameraPosition.copy(car.position);
+    cameraPosition.addScaledVector(cameraForward, -10);
+    cameraPosition.y += 5.5;
+
+    camera.position.lerp(cameraPosition, 1 - Math.pow(1 - 0.08, k));
+
+    cameraTarget.copy(car.position);
+    cameraTarget.addScaledVector(cameraForward, 8);
+    cameraTarget.y += 1;
+
     applyLookOffset();
-    camera.lookAt(
-      cameraTarget
-    );
+    camera.lookAt(cameraTarget);
   }
-  /* =========================================================
-     MESSAGE TIMER
-     ========================================================= */
-  function updateMessage(
-    delta
-  ) {
-    if (
-      messageTimer > 0
-    ) {
-      messageTimer -=
-        delta;
-      if (
-        messageTimer <= 0
-      ) {
-        message.style.opacity =
-          "0";
-      }
-    }
-  }
+
   /* =========================================================
      RESIZE
      ========================================================= */
-  window.addEventListener(
-    "resize",
-    () => {
-      camera.aspect =
-        window.innerWidth /
-        window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(
-        window.innerWidth,
-        window.innerHeight
-      );
-    }
-  );
+  window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
   /* =========================================================
-     START MESSAGE
+     START + GAME LOOP
      ========================================================= */
-  showMessage(
-    "CODEQUESTER"
-  );
-  /* =========================================================
-     GAME LOOP
-     ========================================================= */
-  const clock =
-    new THREE.Clock();
+  showMessage("CODEQUESTER");
+
+  const clock = new THREE.Clock();
+
   function animate() {
-    requestAnimationFrame(
-      animate
-    );
-    const delta =
-      Math.min(
-        clock.getDelta(),
-        0.05
-      );
-    updateCar(delta);
-    updateJump();
+    requestAnimationFrame(animate);
+
+    const delta = Math.min(clock.getDelta(), 0.05);
+    const k = delta * 60; /* 1.0 at 60fps */
+
+    updateCar(delta, k);
+    updateJump(k);
     checkInteractiveObjects();
     updateLap();
     updateDiscovery(delta);
     updateLook(delta);
-    updateCamera();
+    updateSun();
+    updateCamera(k);
     updateMessage(delta);
     updateHUD();
-    renderer.render(
-      scene,
-      camera
-    );
+
+    renderer.render(scene, camera);
   }
+
   updateHUD();
   animate();
 })();
