@@ -1857,9 +1857,7 @@
     */
     frontWheels.forEach(
       wheel => {
-        wheel.rotation.y =
-          -GAME.steering *
-          0.45;
+        wheel.rotation.y = GAME.steering * 0.45;
       }
     );
   }
