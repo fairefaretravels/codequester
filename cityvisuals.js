@@ -25,13 +25,13 @@
 (() => {
   "use strict";
 
-  const PHOTOS = "assets/photos/";
+  const IMAGES = "assets/images/";
 
   const ASSET = {
-    cq1: PHOTOS + "cq1.jpg",
-    cq2: PHOTOS + "scq2.jpg",
-    theStaticGif: PHOTOS + "TheStatic.gif",
-    theStaticPng: PHOTOS + "thestatic.PNG",
+    cq1: IMAGES + "cq1.jpg",
+    cq2: IMAGES + "cq2.jpg",
+    theStaticGif: IMAGES + "TheStatic.gif",
+    theStaticPng: IMAGES + "thestatic.PNG",
     /* optional: drop an equirectangular image here to replace
        the generated night-sky gradient */
     skybox: "assets/city/skybox.jpg"
@@ -93,6 +93,13 @@
     muralMats: [],
     storefrontMats: [],
     gif: null,
+    images: {},
+    backdrop: null,
+    backdropInfo: "",
+    status: null,
+    statusText: "",
+    statusTimer: 0,
+    frames: 0,
     billboards: 0,
     murals: 0,
     unitPlane: null,
@@ -164,6 +171,9 @@
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 4;
     S.textures.set(key, tex);
+    if (!S.images[path]) {
+      S.images[path] = "loading";
+    }
 
     try {
       new THREE.TextureLoader().load(
@@ -180,6 +190,7 @@
           */
           tex.dispose();
           tex.image = img;
+          S.images[path] = "ok";
 
           if (opts.aspect && img.width && img.height) {
             const imageAspect = img.width / img.height;
@@ -195,10 +206,17 @@
             }
           }
 
+          if (opts.onLoad) {
+            opts.onLoad(img, tex);
+          }
+
           tex.needsUpdate = true;
         },
         undefined,
         () => {
+          if (S.images[path] !== "ok") {
+            S.images[path] = "missing";
+          }
           console.warn("CodeQuestER: optional image not found: " + path);
         }
       );
@@ -685,6 +703,63 @@
     S.root.add(sky);
   }
 
+  /*
+    BACKDROP: cq1.jpg repeated as a tall ring around the horizon
+    so it is visible from the very start. It stays hidden until
+    the image has loaded, so a missing file never shows a
+    placeholder in the sky. The number of repeats is chosen from
+    the image's own proportions so it is never stretched.
+  */
+  function buildBackdrop() {
+    const radius = 690;
+    const circumference = 2 * Math.PI * radius;
+    const maxHeight = 300;
+
+    const geometry = new THREE.CylinderGeometry(radius, radius, 1, 64, 1, true);
+    geometry.scale(-1, 1, 1);
+
+    let mesh = null;
+
+    const tex = loadOptionalTexture(ASSET.cq1, {
+      label: "cq1",
+      onLoad: (img, t) => {
+        const aspect = img.width / img.height;
+        const panels = Math.max(
+          1,
+          Math.round(circumference / (maxHeight * aspect))
+        );
+        const height = circumference / panels / aspect;
+
+        t.wrapS = THREE.RepeatWrapping;
+        t.repeat.set(panels, 1);
+
+        if (mesh) {
+          mesh.scale.y = height;
+          mesh.position.y = height / 2 - 6;
+          mesh.visible = true;
+        }
+        S.backdropInfo = panels + " panels";
+      }
+    });
+
+    mesh = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({
+        map: tex,
+        color: 0xb8bccc,
+        fog: false,
+        depthWrite: false
+      })
+    );
+
+    mesh.name = "CQ_Backdrop";
+    mesh.visible = false;
+    mesh.frustumCulled = false;
+
+    S.backdrop = mesh;
+    S.root.add(mesh);
+  }
+
   function buildSkyline() {
     const count = 110;
     const geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -1025,10 +1100,12 @@
     };
 
     img.onload = () => {
+      S.images[ASSET.theStaticGif] = "ok";
       screen.ready = true;
       paintGif(screen);
     };
     img.onerror = () => {
+      S.images[ASSET.theStaticGif] = "missing";
       console.warn("CodeQuestER: optional image not found: " + ASSET.theStaticGif);
     };
 
@@ -1205,6 +1282,7 @@
 
     buildArtworkSets();
     buildSky();
+    buildBackdrop();
     buildSkyline();
 
     const blocks = track.buildings.filter(
@@ -1271,8 +1349,21 @@
       return;
     }
 
+    S.frames++;
+
     if (S.sky) {
       S.sky.position.set(car.x, 0, car.z);
+    }
+
+    if (S.backdrop) {
+      S.backdrop.position.x = car.x;
+      S.backdrop.position.z = car.z;
+    }
+
+    S.statusTimer += delta;
+    if (S.statusTimer >= 0.5) {
+      S.statusTimer = 0;
+      updateStatus(car);
     }
 
     for (let i = 0; i < S.vinyls.length; i++) {
@@ -1302,6 +1393,80 @@
       }
     }
   }
+
+  /* =======================================================
+     STATUS LINE (bottom-left, tap it to hide)
+     Shows what loaded so problems can be spotted on a phone.
+     ======================================================= */
+  function setStatus(text) {
+    if (S.status && text !== S.statusText) {
+      S.statusText = text;
+      S.status.textContent = text;
+    }
+  }
+
+  function updateStatus(car) {
+    const marks = [
+      ["cq1", ASSET.cq1],
+      ["cq2", ASSET.cq2],
+      ["gif", ASSET.theStaticGif],
+      ["png", ASSET.theStaticPng],
+      ["sky (optional)", ASSET.skybox]
+    ]
+      .map(item => {
+        const state = S.images[item[1]];
+        return (
+          item[0] +
+          (state === "ok" ? " \u2713" : state === "missing" ? " \u2717" : " ...")
+        );
+      })
+      .join("   ");
+
+    setStatus(
+      "CQ visuals v2   zone: " +
+        zoneAt(car.x, car.z).toUpperCase() +
+        "\nimages: " +
+        marks +
+        "\nbackdrop: " +
+        (S.backdropInfo || "waiting for cq1")
+    );
+  }
+
+  function createStatus() {
+    if (typeof document === "undefined" || !document.body) {
+      return;
+    }
+
+    const el = document.createElement("div");
+    el.style.cssText =
+      "position:fixed;left:8px;bottom:86px;z-index:24;max-width:75%;" +
+      "font:10px/1.4 Arial,sans-serif;color:#9fe8ff;" +
+      "background:rgba(0,0,0,.65);padding:4px 7px;border-radius:6px;" +
+      "white-space:pre-line;";
+    el.addEventListener("pointerdown", () => {
+      el.style.display = "none";
+    });
+    document.body.appendChild(el);
+
+    S.status = el;
+    setStatus("CQ visuals v2 loaded - waiting for main.js to start it");
+
+    setTimeout(() => {
+      if (!S.root) {
+        setStatus(
+          "CQ visuals v2: apply() was NOT called.\n" +
+          "Check main.js Edit 1 (above the TRACK INFORMATION block)."
+        );
+      } else if (!S.frames) {
+        setStatus(
+          "CQ visuals v2: started, but the frame hook is not running.\n" +
+          "Check main.js Edit 2 (after updateDiscovery(delta);)."
+        );
+      }
+    }, 3000);
+  }
+
+  createStatus();
 
   if (window.CQHooks) {
     window.CQHooks.register(update);
