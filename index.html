@@ -29,12 +29,14 @@
   <!-- Optional systems. Each one is guarded in main.js, so if a file
        fails to load the driving game still runs. Order matters:
        music -> locations (also defines CQHooks) -> city visuals. -->
-  <script src="music.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
+<script src="trackgenerator.js"></script>
+<script src="music.js"></script>
+<script src="locations.js"></script>
+<script src="cityvisuals.js"></script>
 <script src="main.js"></script>
 <script src="drivercontrols.js"></script>
 <script src="tapedeck.js"></script>
-  <script src="cityvisuals.js"></script>
-  <script src="locations.js"></script>
   <!-- Steering wheel + radio. Needs main.js (window.CQGame) and music.js. -->
 </body>
 </html>
