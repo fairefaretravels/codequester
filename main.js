@@ -1,31 +1,31 @@
 /* =========================================================
    CODEQUESTER — MAIN GAME
    Three.js r156 — FREE DRIVING BUILD
-   Load order: music.js, main.js, drivercontrols.js, tapedeck.js
+
+   LOAD ORDER (index.html):
+     three, trackgenerator.js, music.js, locations.js,
+     cityvisuals.js, main.js, drivercontrols.js, tapedeck.js
 
    CONTROLS
    W / Up     Accelerate        A / Left   Steer left
    S / Down   Brake / Reverse   D / Right  Steer right
    C          Toggle DRIVE / LOOK camera
    Q E R F    Look around (LOOK mode)
+   T          Flip steering direction
    M / N      Radio play-pause / next (drivercontrols.js)
-
-   MOBILE
-   On-screen steering + throttle/brake (steering wheel is
-   added by drivercontrols.js).
 
    NOTES
    - Free driving: nothing pulls the car back to the road.
-   - Physics is scaled by frame time, so speed is the same on
-     60Hz and 120Hz screens.
-   - City discovery: five landmarks on existing city buildings.
+   - Physics is scaled by frame time (same speed at 60/120Hz).
+   - City visuals: CQCityVisuals.apply(track) runs once after
+     the track is generated; CQCityVisuals.update() runs every
+     frame. Both are guarded, so the game still runs if
+     cityvisuals.js fails to load.
    ========================================================= */
 (() => {
   "use strict";
 
-  /* STEERING DIRECTION
-     Tap the STEER button (top-right) or press T to flip
-     left/right. The choice is saved in this browser. */
+  /* STEERING DIRECTION (saved in this browser) */
   const STEER_KEY = "codequester.steerSign.v1";
   let steerSign = -1;
 
@@ -35,7 +35,7 @@
       steerSign = Number(saved);
     }
   } catch (error) {
-    /* storage blocked: the toggle still works for this session */
+    /* storage blocked: toggle still works for this session */
   }
 
   /* =========================================================
@@ -100,13 +100,12 @@
 
   /* =========================================================
      LIGHTING
-     The sun (and its shadow box) follows the car, so shadows
-     keep working anywhere in the free-driving world.
+     The sun (and its shadow box) follows the car.
      ========================================================= */
   scene.add(new THREE.HemisphereLight(0x8fd8ff, 0x05070b, 1.7));
 
   const SUN_OFFSET = new THREE.Vector3(-60, 90, 40);
-  const SUN_SNAP = 20; /* snap to a grid so shadows don't shimmer */
+  const SUN_SNAP = 20;
 
   const sun = new THREE.DirectionalLight(0xffffff, 2.0);
   sun.position.copy(SUN_OFFSET);
@@ -126,11 +125,7 @@
     const x = Math.round(car.position.x / SUN_SNAP) * SUN_SNAP;
     const z = Math.round(car.position.z / SUN_SNAP) * SUN_SNAP;
     sun.target.position.set(x, 0, z);
-    sun.position.set(
-      x + SUN_OFFSET.x,
-      SUN_OFFSET.y,
-      z + SUN_OFFSET.z
-    );
+    sun.position.set(x + SUN_OFFSET.x, SUN_OFFSET.y, z + SUN_OFFSET.z);
     sun.target.updateMatrixWorld();
   }
 
@@ -147,6 +142,20 @@
 
   const TRACK_COUNT = waypoints.length;
   const ROAD_WIDTH = track.laneHalfWidth * 2;
+
+  /* =========================================================
+     CITY VISUALS (one-time post-pass)
+     Images, skybox, backdrop, billboards, record store, theatre.
+     ========================================================= */
+  if (window.CQCityVisuals) {
+    try {
+      window.CQCityVisuals.apply(track);
+    } catch (error) {
+      console.error("CodeQuestER: city visuals failed:", error);
+    }
+  } else {
+    console.warn("CodeQuestER: cityvisuals.js not loaded.");
+  }
 
   /* =========================================================
      PLAYER CAR
@@ -435,13 +444,12 @@
 
   /* =========================================================
      FREE-LOOK CAMERA
-     DRIVE = the follow camera (default).
-     LOOK  = same follow camera, but the player can look around
-             independently. The car is never rotated.
+     DRIVE = follow camera. LOOK = same camera, but the player
+     can look around independently. The car is never rotated.
      ========================================================= */
   const LOOK = {
     mode: "DRIVE",
-    yaw: 0, /* radians: +yaw looks left, +pitch looks up */
+    yaw: 0,
     pitch: 0,
     targetYaw: 0,
     targetPitch: 0,
@@ -535,7 +543,6 @@
     clearLookKeys();
 
     if (mode === "DRIVE") {
-      /* go home the short way round, then ease back to 0 */
       LOOK.yaw = wrapAngle(LOOK.yaw);
       LOOK.targetYaw = 0;
       LOOK.targetPitch = 0;
@@ -597,8 +604,7 @@
 
   updateSteerButton();
 
-  /* drag / swipe to look (canvas only, so driving buttons
-     keep working and a second finger can still steer) */
+  /* drag / swipe to look (canvas only) */
   const lookSurface = renderer.domElement;
   lookSurface.style.touchAction = "none";
 
@@ -634,7 +640,6 @@
     LOOK.lastX = event.clientX;
     LOOK.lastY = event.clientY;
 
-    /* drag left -> look left (+yaw), drag up -> look up (+pitch) */
     LOOK.targetYaw -= dx * LOOK.dragYawPerPixel;
     LOOK.targetPitch -= dy * LOOK.dragPitchPerPixel;
     LOOK.targetPitch = THREE.MathUtils.clamp(
@@ -659,7 +664,7 @@
   /* C toggles, Q/E/R/F look (hold) */
   window.addEventListener("keydown", event => {
     if (event.ctrlKey || event.metaKey || event.altKey) {
-      return; /* leave browser shortcuts alone */
+      return;
     }
     const key = event.key.toLowerCase();
 
@@ -683,7 +688,7 @@
     if (key === "f") LOOK.keys.down = false;
   });
 
-  /* losing focus (alt-tab etc.) must not leave keys stuck */
+  /* losing focus must not leave keys stuck */
   window.addEventListener("blur", () => {
     clearLookKeys();
     LOOK.dragPointer = null;
@@ -703,7 +708,6 @@
         LOOK.maxPitch
       );
 
-      /* horizontal look is free, but keep numbers small */
       if (Math.abs(LOOK.targetYaw) > Math.PI * 4) {
         const shift =
           Math.round(LOOK.targetYaw / (Math.PI * 2)) * Math.PI * 2;
@@ -720,8 +724,6 @@
     let stepPitch = (LOOK.targetPitch - LOOK.pitch) * blend;
 
     if (returning) {
-      /* ease home at a limited angular speed so a big look
-         angle never whips back */
       const maxStep = LOOK.maxReturnSpeed * delta;
       stepYaw = THREE.MathUtils.clamp(stepYaw, -maxStep, maxStep);
       stepPitch = THREE.MathUtils.clamp(stepPitch, -maxStep, maxStep);
@@ -750,9 +752,7 @@
   /* =========================================================
      CITY DISCOVERY
      Locations sit on EXISTING city buildings from the
-     generator (track.destinations). Each gets one cheap glowing
-     beacon so it can be spotted from far away.
-     Change the table to re-map names to buildings.
+     generator (track.destinations), each with a beacon.
      ========================================================= */
   const LOCATION_DEFS = [
     { id: "tech_hub", name: "TECH HUB", type: "quest", buildingType: "radio_station" },
@@ -763,7 +763,7 @@
   ];
 
   const DISCOVERY = {
-    arriveRadius: 45,   /* metres from the building footprint */
+    arriveRadius: 45,
     discoverRadius: 18,
     questTargetId: "tech_hub",
     questState: "none", /* "none" -> "active" -> "complete" */
@@ -790,9 +790,7 @@
     );
 
     if (!building || !building.geometry || !building.geometry.parameters) {
-      console.warn(
-        "CodeQuestER: no building for location " + definition.id
-      );
+      console.warn("CodeQuestER: no building for location " + definition.id);
       return;
     }
 
@@ -849,12 +847,10 @@
     return null;
   }
 
-  /* If the Tech Hub building is missing, the quest falls back to
-     the first location that did resolve instead of never starting. */
+  /* If the Tech Hub building is missing, fall back to the first
+     location that did resolve instead of never starting. */
   if (!findLocation(DISCOVERY.questTargetId) && LOCATIONS.length > 0) {
-    console.warn(
-      "CodeQuestER: quest target missing, using " + LOCATIONS[0].id
-    );
+    console.warn("CodeQuestER: quest target missing, using " + LOCATIONS[0].id);
     DISCOVERY.questTargetId = LOCATIONS[0].id;
   }
 
@@ -877,8 +873,7 @@
     return "NONE";
   }
 
-  /* distance from the car to the edge of the building footprint
-     (0 when inside it) */
+  /* distance from the car to the edge of the building footprint */
   function distanceToLocation(location) {
     const dx = Math.max(
       Math.abs(car.position.x - location.position.x) - location.halfWidth,
@@ -891,8 +886,7 @@
     return Math.sqrt(dx * dx + dz * dz);
   }
 
-  /* banner (queued, so back-to-back messages never overwrite
-     each other or the boost / jump messages) */
+  /* banner (queued so messages never overwrite each other) */
   const banner = document.createElement("div");
   banner.style.cssText =
     "position:fixed;left:50%;top:30%;transform:translate(-50%,-50%);" +
@@ -901,8 +895,7 @@
     "transition:opacity .25s;";
 
   const bannerHead = document.createElement("div");
-  bannerHead.style.cssText =
-    "font-size:14px;letter-spacing:3px;color:#00eaff;";
+  bannerHead.style.cssText = "font-size:14px;letter-spacing:3px;color:#00eaff;";
   const bannerBody = document.createElement("div");
   bannerBody.style.cssText = "font-size:24px;font-weight:bold;";
 
@@ -938,7 +931,6 @@
     }
   }
 
-  /* DRIVE -> DISCOVER -> QUEST -> COMPLETE */
   function refreshBeaconColors() {
     for (let i = 0; i < LOCATIONS.length; i++) {
       const location = LOCATIONS[i];
@@ -970,7 +962,6 @@
     if (questTarget) {
       if (DISCOVERY.questState === "none") {
         if (location === questTarget) {
-          /* first find happens to be the quest target */
           completeQuest();
         } else {
           DISCOVERY.questState = "active";
@@ -1009,7 +1000,6 @@
   function updateDiscovery(delta) {
     DISCOVERY.time += delta;
 
-    /* gentle beacon pulse (undiscovered only) */
     const pulse = 0.45 + 0.2 * Math.sin(DISCOVERY.time * 3);
 
     let nearest = null;
@@ -1038,8 +1028,6 @@
       }
     }
 
-    /* objective readout: the quest target while the quest is
-       active, otherwise the nearest undiscovered location */
     let target = nearest;
 
     if (DISCOVERY.questState === "active") {
@@ -1066,8 +1054,7 @@
   refreshBeaconColors();
 
   /* =========================================================
-     CLOSEST TRACK POINT
-     Informational only: it does NOT restrict movement.
+     CLOSEST TRACK POINT (informational only)
      ========================================================= */
   function findClosestWaypoint() {
     let closest = GAME.trackIndex;
@@ -1092,8 +1079,7 @@
   }
 
   /* =========================================================
-     STEERING
-     k = frame scale (1 at 60fps, 0.5 at 120fps)
+     STEERING (k = frame scale: 1 at 60fps, 0.5 at 120fps)
      ========================================================= */
   function updateSteering(k) {
     let input = 0;
@@ -1105,9 +1091,8 @@
       input += 1;
     }
 
-    /* On-screen steering wheel (drivercontrols.js) sets this to a
-       number from -1 (full left) to +1 (full right) while in use,
-       and back to null when idle so the keys work as before. */
+    /* drivercontrols.js sets analogSteer (-1..+1) while the
+       on-screen wheel is in use, and null when idle. */
     if (typeof GAME.analogSteer === "number") {
       input = THREE.MathUtils.clamp(GAME.analogSteer, -1, 1);
     }
@@ -1119,7 +1104,6 @@
       1 - Math.pow(1 - 0.14, k)
     );
 
-    /* steering gets slightly stronger at higher speed */
     const speedFactor = THREE.MathUtils.clamp(
       Math.abs(GAME.speed) / GAME.maxSpeed,
       0.25,
@@ -1128,12 +1112,10 @@
     const steeringAmount =
       GAME.steering * GAME.steeringPower * speedFactor * k;
 
-    /* The car faces local -Z, so +rotation.y turns LEFT and
-       steering +1 means right. steerSign (top of file, toggled in game)
-       flips the result if it looks backwards on screen. */
+    /* The car faces local -Z, so +rotation.y turns LEFT.
+       steerSign flips the result if it looks backwards. */
     car.rotation.y -= steeringAmount * steerSign;
 
-    /* front wheel visual steering */
     frontWheels.forEach(wheel => {
       wheel.rotation.y = -GAME.steering * 0.45 * steerSign;
     });
@@ -1218,8 +1200,6 @@
         break;
     }
 
-    /* flash the car with the zone color, then always return to the
-       real base color (never to a previous flash color) */
     bodyMaterial.color.setHex(zone.userData.boostColor);
     clearTimeout(flashTimer);
     flashTimer = setTimeout(() => {
@@ -1295,7 +1275,6 @@
 
   /* =========================================================
      LAP DETECTION
-     Only meaningful when actually driving around the track.
      ========================================================= */
   function updateLap() {
     const current = GAME.trackIndex;
@@ -1319,9 +1298,8 @@
   const cameraTarget = new THREE.Vector3();
   const cameraForward = new THREE.Vector3();
 
-  /* Rotate the existing driving view by the player's look yaw /
-     pitch. In DRIVE mode both settle at 0, so the normal driving
-     camera is unchanged. */
+  /* Rotate the driving view by the player's look yaw / pitch.
+     In DRIVE mode both settle at 0, so the camera is unchanged. */
   function applyLookOffset() {
     if (Math.abs(LOOK.yaw) < 0.0001 && Math.abs(LOOK.pitch) < 0.0001) {
       return;
@@ -1332,14 +1310,10 @@
     const dz = cameraTarget.z - camera.position.z;
     const length = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
 
-    /* yaw 0 = looking along -Z, positive yaw turns toward -X
-       (the player's left) */
     const baseYaw = Math.atan2(-dx, -dz);
     const basePitch = Math.asin(THREE.MathUtils.clamp(dy / length, -1, 1));
 
     const yaw = baseYaw + LOOK.yaw;
-
-    /* never reach straight up / down, so the camera cannot flip */
     const pitch = THREE.MathUtils.clamp(basePitch + LOOK.pitch, -1.4, 1.4);
     const flat = Math.cos(pitch);
 
@@ -1394,6 +1368,13 @@
     checkInteractiveObjects();
     updateLap();
     updateDiscovery(delta);
+
+    /* City visuals frame update: skybox/backdrop follow, vinyl
+       spin, billboard slides, theatre GIF. */
+    if (window.CQCityVisuals) {
+      window.CQCityVisuals.update(delta, car.position);
+    }
+
     updateLook(delta);
     updateSun();
     updateCamera(k);
