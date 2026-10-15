@@ -49,6 +49,9 @@ class TrackGenerator {
     this.laneHalfWidth = 6;
 
     this.waypointSpacing = 2;
+     /* Track district: city spans -280..280, floor spans -700..700.
+   Centering the track at x=440 puts it ~70 units east of the city edge. */
+this.trackCenter = { x: 440, z: 0 };
 
     /* =======================================================
        TRACK GAMEPLAY
@@ -187,8 +190,13 @@ class TrackGenerator {
         );
     }
 
-    this.waypoints =
-      loop;
+    /* Move the track into its own district away from the city */
+for (const p of loop) {
+  p.x += this.trackCenter.x;
+  p.z += this.trackCenter.z;
+}
+
+this.waypoints = loop;
 
     /* =======================================================
        ADD WORLD
