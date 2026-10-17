@@ -1063,29 +1063,34 @@
   };
 
   /* =========================================================
-     CLOSEST TRACK POINT (informational only)
+   CLOSEST TRACK POINT (informational only)
+   ========================================================= */
+function findClosestWaypoint() {
+  let closest = GAME.trackIndex;
+  let closestDistance = Infinity;
+  const searchRadius = 35;
 
-  function findClosestWaypoint() {
-    let closest = GAME.trackIndex;
-    let closestDistance = Infinity;
-    const searchRadius = 35;
+  for (let offset = -searchRadius; offset <= searchRadius; offset++) {
+    const index =
+      (GAME.trackIndex + offset + TRACK_COUNT) % TRACK_COUNT;
+    const point = waypoints[index];
+    const dx = car.position.x - point.x;
+    const dz = car.position.z - point.z;
+    const distance = dx * dx + dz * dz;
 
-    for (let offset = -searchRadius; offset <= searchRadius; offset++) {
-      const index =
-        (GAME.trackIndex + offset + TRACK_COUNT) % TRACK_COUNT;
-      const point = waypoints[index];
-      const dx = car.position.x - point.x;
-      const dz = car.position.z - point.z;
-      const distance = dx * dx + dz * dz;
-
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closest = index;
-      }
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closest = index;
     }
-
-    GAME.trackIndex = closest;
   }
+
+  GAME.trackIndex = closest;
+}
+
+/* =========================================================
+   STEERING (k = frame scale: 1 at 60fps, 0.5 at 120fps)
+   ========================================================= */
+function updateSteering(k) {
 
   /* =========================================================
      STEERING (k = frame scale: 1 at 60fps, 0.5 at 120fps)
