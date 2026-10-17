@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeQuestER — Energy Vampire Prototype</title>
+<style>
+:root{color-scheme:dark;--red:#ff303b;--ice:#7df7ff;--panel:rgba(5,10,17,.88)}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05080d;color:#eef5fb;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#hud{position:fixed;inset:0;pointer-events:none;padding:16px;display:flex;flex-direction:column;justify-content:space-between}
+.top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.panel{background:var(--panel);border:1px solid #293642;border-radius:12px;padding:12px 14px;box-shadow:0 8px 28px #0008;backdrop-filter:blur(8px)}
+.eyebrow{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#9aabb9}
+h1{font-size:clamp(16px,3vw,23px);margin:3px 0 8px;letter-spacing:.05em}
+.meterline{display:flex;justify-content:space-between;gap:20px;font-size:12px;margin-bottom:7px}
+.meter{width:min(310px,55vw);height:10px;background:#202b35;border-radius:99px;overflow:hidden;border:1px solid #43505b}
+#energyFill{height:100%;width:100%;background:linear-gradient(90deg,#30f0bc,#b8ff70);transition:width .15s,background .2s}
+#status{color:#c7d3dc;font-size:12px;max-width:340px;line-height:1.4}
+#alert{font-weight:800;letter-spacing:.12em;color:var(--red);font-size:12px;min-height:18px;text-shadow:0 0 12px #ff203c}
+.bottom{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+#help{max-width:420px;font-size:12px;line-height:1.5;color:#bac7d1}
+#restart{pointer-events:auto;border:1px solid #526371;border-radius:9px;background:#141e28;color:#fff;padding:10px 13px;font-weight:700}
+#restart:active{transform:scale(.98)}
+#touch{display:none;pointer-events:auto;gap:8px;align-items:flex-end}
+.pad{display:grid;grid-template-columns:repeat(3,42px);grid-template-rows:repeat(2,42px);gap:5px}
+.touchbtn{background:#101a25cc;color:white;border:1px solid #506070;border-radius:10px;font-size:17px;touch-action:none}
+.touchbtn[data-dir="up"]{grid-column:2}.touchbtn[data-dir="left"]{grid-column:1;grid-row:2}.touchbtn[data-dir="down"]{grid-column:2;grid-row:2}.touchbtn[data-dir="right"]{grid-column:3;grid-row:2}
+#vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(transparent 45%,rgba(255,0,35,.0) 100%);transition:background .2s}
+#message{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(90vw,420px);text-align:center;display:none}
+#message .panel{padding:24px}
+#message p{line-height:1.5;color:#d5dfe7}
+@media(max-width:650px){#touch{display:flex}.top{align-items:flex-start}.top .panel:last-child{max-width:46vw}#status{font-size:11px}#help{max-width:48vw;font-size:11px}.bottom{align-items:flex-end}}
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Top-down zombie survival game"></canvas>
+<div id="hud">
+  <div class="top">
+    <div class="panel">
+      <div class="eyebrow">CodeQuestER · Prototype</div>
+      <h1>ENERGY VAMPIRES</h1>
+      <div class="meterline"><span>PLAYER ENERGY</span><strong id="energyText">100%</strong></div>
+      <div class="meter"><div id="energyFill"></div></div>
+      <div id="alert" aria-live="polite"></div>
+    </div>
+    <div class="panel">
+      <div class="eyebrow">Survival status</div>
+      <div id="status">Keep your distance. Reach the blue safe zone.</div>
+      <div style="margin-top:8px;font-size:12px;color:#a8bac8">Safe zone: cyan beacon</div>
+    </div>
+  </div>
+  <div class="bottom">
+    <div class="panel" id="help">Move with <b>W A S D</b> or <b>arrow keys</b>. Avoid the energy vampires. Reach the cyan safe zone to recover.</div>
+    <div id="touch" aria-label="Touch movement controls">
+      <div class="pad">
+        <button class="touchbtn" data-dir="up" aria-label="Move up">▲</button>
+        <button class="touchbtn" data-dir="left" aria-label="Move left">◀</button>
+        <button class="touchbtn" data-dir="down" aria-label="Move down">▼</button>
+        <button class="touchbtn" data-dir="right" aria-label="Move right">▶</button>
+      </div>
+    </div>
+    <button id="restart">Restart run</button>
+  </div>
+</div>
+<div id="vignette"></div>
+<div id="message"><div class="panel"><div class="eyebrow">Run complete</div><h1 id="endTitle">YOU ESCAPED</h1><p id="endCopy"></p><button id="playAgain" class="touchbtn" style="padding:11px 16px">Play again</button></div></div>
+<script>
+(() => {
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const energyFill=document.getElementById('energyFill'),energyText=document.getElementById('energyText');
+const alertEl=document.getElementById('alert'),statusEl=document.getElementById('status'),vignette=document.getElementById('vignette');
+const message=document.getElementById('message'),endTitle=document.getElementById('endTitle'),endCopy=document.getElementById('endCopy');
+let w=0,h=0,dpr=1,last=0,energy=100,ended=false,won=false,elapsed=0;
+const keys=new Set(),touchKeys=new Set();
+const player={x:0,y:0,r:12,speed:190,invuln:0};
+const vampires=[];
+const safe={x:0,y:0,r:34};
+function resize(){dpr=Math.min(devicePixelRatio||1,2);w=innerWidth;h=innerHeight;canvas.width=Math.floor(w*dpr);canvas.height=Math.floor(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);placeWorld();}
+function placeWorld(){player.x=w*.18;player.y=h*.72;safe.x=w*.82;safe.y=h*.25;vampires.length=0;const n=Math.max(3,Math.min(7,Math.floor(w/170)));for(let i=0;i<n;i++){vampires.push({x:w*(.28+(i%4)*.16),y:h*(.18+Math.floor(i/4)*.42),r:15,speed:42+Math.random()*16,phase:Math.random()*6.28,hit:0});}}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function end(win){if(ended)return;ended=true;won=win;message.style.display='block';endTitle.textContent=win?'YOU ESCAPED':'ENERGY DRAINED';endCopy.textContent=win?'You reached the safe zone. The energy vampires lost your trail.':'The vampires drained your energy. Keep moving and use the safe zone next time.';}
+function update(dt){if(ended)return;elapsed+=dt;player.invuln=Math.max(0,player.invuln-dt);
+ let dx=0,dy=0;if(keys.has('ArrowUp')||keys.has('w')||touchKeys.has('up'))dy--;if(keys.has('ArrowDown')||keys.has('s')||touchKeys.has('down'))dy++;if(keys.has('ArrowLeft')||keys.has('a')||touchKeys.has('left'))dx--;if(keys.has('ArrowRight')||keys.has('d')||touchKeys.has('right'))dx++;
+ if(dx||dy){const l=Math.hypot(dx,dy)||1;player.x+=dx/l*player.speed*dt;player.y+=dy/l*player.speed*dt;}
+ player.x=clamp(player.x,20,w-20);player.y=clamp(player.y,80,h-25);
+ let closest=Infinity;
+ for(const z of vampires){const d=dist(player,z);closest=Math.min(closest,d);z.phase+=dt*3;
+  if(d>z.r+player.r+3){const vx=(player.x-z.x)/(d||1),vy=(player.y-z.y)/(d||1);z.x+=vx*z.speed*dt;z.y+=vy*z.speed*dt;}
+  if(d<100){energy-=((100-d)/100)*22*dt;z.hit=1;}else z.hit=Math.max(0,z.hit-dt*2);
+ }
+ if(dist(player,safe)<safe.r+player.r){energy=Math.min(100,energy+30*dt);statusEl.textContent='SAFE ZONE — energy recovering';}
+ else if(closest<100){statusEl.textContent='DANGER — they are draining your energy';}
+ else {statusEl.textContent='Keep your distance. Reach the blue safe zone.';}
+ energy=clamp(energy,0,100);energyFill.style.width=energy+'%';energyText.textContent=Math.round(energy)+'%';
+ energyFill.style.background=energy<30?'linear-gradient(90deg,#ff243f,#ff7a40)':energy<60?'linear-gradient(90deg,#ffc247,#fff078)':'linear-gradient(90deg,#30f0bc,#b8ff70)';
+ alertEl.textContent=closest<70?'VAMPIRE FEEDING':closest<130?'HOSTILE NEARBY':'';
+ const danger=clamp((130-closest)/130,0,1);vignette.style.background=`radial-gradient(transparent 36%, rgba(255,0,35,${danger*.42}) 100%)`;
+ if(energy<=0)end(false);if(dist(player,safe)<safe.r+player.r) { if(energy>=99)end(true); }
+}
+function drawGrid(){ctx.fillStyle='#070c12';ctx.fillRect(0,0,w,h);ctx.strokeStyle='#15212b';ctx.lineWidth=1;const size=48,ox=-(elapsed*8%size),oy=-(elapsed*4%size);for(let x=ox;x<w;x+=size){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}for(let y=oy;y<h;y+=size){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+ // city blocks / non-drivable buildings for visual context
+ for(let i=0;i<10;i++){const bx=((i*173+55)%(Math.max(w-100,1))),by=((i*127+110)%(Math.max(h-160,1)))+80;if(Math.hypot(bx-player.x,by-player.y)<65||Math.hypot(bx-safe.x,by-safe.y)<55)continue;ctx.fillStyle='#101923';ctx.strokeStyle='#2a3947';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(bx,by,58,38,4);ctx.fill();ctx.stroke();ctx.fillStyle='#31414f';ctx.fillRect(bx+7,by+7,8,5);ctx.fillRect(bx+23,by+7,8,5);ctx.fillRect(bx+39,by+7,8,5);}
+}
+function drawVampire(z){ctx.save();ctx.translate(z.x,z.y);ctx.shadowBlur=20;ctx.shadowColor='#ff123b';ctx.fillStyle='#2b0c18';ctx.strokeStyle='#ff294b';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(0,0,z.r*1.08,z.r*1.28,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.shadowBlur=0;
+ // ragged hood and shoulders
+ ctx.fillStyle='#100b12';ctx.beginPath();ctx.moveTo(-12,-7);ctx.lineTo(-20,12);ctx.lineTo(-8,8);ctx.lineTo(0,19);ctx.lineTo(7,8);ctx.lineTo(20,13);ctx.lineTo(12,-7);ctx.closePath();ctx.fill();
+ ctx.fillStyle='#ffedf0';ctx.beginPath();ctx.moveTo(-8,5);ctx.lineTo(-4,12);ctx.lineTo(0,5);ctx.lineTo(4,12);ctx.lineTo(8,5);ctx.closePath();ctx.fill();
+ ctx.fillStyle='#ff263f';ctx.shadowBlur=10;ctx.shadowColor='#ff263f';ctx.fillRect(-8,-5,5,3);ctx.fillRect(3,-5,5,3);
+ ctx.strokeStyle='#ff536a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,-z.r-12);ctx.lineTo(Math.sin(z.phase)*7,-z.r-24);ctx.stroke();ctx.restore();}
+function draw(){drawGrid();
+ // safe zone
+ const pulse=1+Math.sin(elapsed*3)*.08;ctx.save();ctx.translate(safe.x,safe.y);ctx.scale(pulse,pulse);ctx.strokeStyle='#68f6ff';ctx.lineWidth=2;ctx.shadowBlur=24;ctx.shadowColor='#45f5ff';ctx.beginPath();ctx.arc(0,0,safe.r,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#4df5ff22';ctx.fill();ctx.fillStyle='#a8fcff';ctx.font='bold 10px system-ui';ctx.textAlign='center';ctx.fillText('SAFE',0,4);ctx.restore();
+ // draining tendrils
+ for(const z of vampires){if(dist(player,z)<100){ctx.strokeStyle='#ff2b4b99';ctx.lineWidth=2;ctx.setLineDash([4,7]);ctx.beginPath();ctx.moveTo(z.x,z.y);ctx.lineTo(player.x,player.y);ctx.stroke();ctx.setLineDash([]);}drawVampire(z);}
+ // player
+ ctx.save();ctx.translate(player.x,player.y);ctx.shadowBlur=player.invuln?22:12;ctx.shadowColor='#75f4ff';ctx.fillStyle='#dffcff';ctx.strokeStyle='#5ef5ff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,player.r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.shadowBlur=0;ctx.fillStyle='#132b35';ctx.beginPath();ctx.arc(0,0,4,0,Math.PI*2);ctx.fill();ctx.restore();
+ // title safe zone direction indicator
+ ctx.fillStyle='#8efaff';ctx.font='11px system-ui';ctx.textAlign='center';ctx.fillText('YOU',player.x,player.y-20);
+}
+function loop(t){const dt=Math.min((t-last)/1000||0,.035);last=t;update(dt);draw();requestAnimationFrame(loop);}
+addEventListener('resize',resize);
+addEventListener('keydown',e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(k))e.preventDefault();keys.add(k);});
+addEventListener('keyup',e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;keys.delete(k);});
+document.querySelectorAll('.touchbtn[data-dir]').forEach(b=>{const d=b.dataset.dir;const down=e=>{e.preventDefault();touchKeys.add(d);};const up=e=>{e.preventDefault();touchKeys.delete(d);};b.addEventListener('pointerdown',down);b.addEventListener('pointerup',up);b.addEventListener('pointercancel',up);b.addEventListener('pointerleave',up);});
+function restart(){energy=100;ended=false;won=false;elapsed=0;message.style.display='none';resize();}
+document.getElementById('restart').addEventListener('click',restart);document.getElementById('playAgain').addEventListener('click',restart);
+resize();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
