@@ -1,0 +1,49 @@
+CODEQUESTER — ENERGY VAMPIRES + COMBAT + LEVELS
+
+This add-on file must be integrated into the existing game. The GitHub connector is currently read-only, so these steps must be done in the GitHub editor.
+
+1. ADD THE FILE
+Create energyvampires.js in the root of the codequester repository and paste in the downloaded file contents.
+
+2. UPDATE index.html
+The script order should be:
+<script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
+<script src="trackgenerator.js"></script>
+<script src="music.js"></script>
+<script src="locations.js"></script>
+<script src="cityvisuals.js"></script>
+<script src="main.js"></script>
+<script src="energyvampires.js"></script>
+<script src="drivercontrols.js"></script>
+<script src="tapedeck.js"></script>
+
+3. UPDATE main.js — EXPOSE THE WORLD
+Find `refreshBeaconColors();` directly above the comment `CLOSEST TRACK POINT (informational only)` in the city-discovery section. Immediately AFTER that `refreshBeaconColors();` line, add:
+
+  window.CQWorld = { scene, car, locations: LOCATIONS, THREE, waypoints, track };
+
+4. UPDATE main.js — CALL THE ADD-ON
+In animate(), find the line:
+
+  updateDiscovery(delta);
+
+Immediately AFTER it, add:
+
+  if (window.CQEnergyVampires) window.CQEnergyVampires.update(delta);
+
+5. SAVE / COMMIT and test the deployed page.
+
+FEATURES IN THIS BUILD
+- Three pursuing Energy Vampires.
+- Silver bullet pickups placed along the existing track, with +3 ammo per pickup and respawn.
+- Slingshot is the cheapest weapon at $50; pistol costs $250; shotgun costs $600. Earn race cash before buying your first weapon.
+- Weapon purchases, cash, ammo, selected weapon, kills and level save in localStorage on the same browser.
+- Shoot with SPACE on keyboard or FIRE on screen; the car must be facing an enemy.
+- Each enemy requires two slingshot/pistol damage points or three shotgun damage points to defeat; each vampire must be defeated twice to unlock Level 2.
+- Completing a lap earns $100; defeating a vampire earns $35; Level 2 grants a $250 bonus.
+- Garage and Tech Hub are energy safe zones when those locations exist.
+
+IMPORTANT NOTES
+- This is a first playable combat pass. The weapon visuals are represented by the HUD/shop and firing action; this version does not yet render a projectile travelling through the world.
+- Progress is stored in this browser, not synced across devices. Clearing browser site data can erase saved progress.
+- Verify that the existing main.js uses the same `window.CQWorld` insertion point and that the GitHub Pages build loads without console errors before adding more systems.
