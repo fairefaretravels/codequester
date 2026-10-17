@@ -1133,7 +1133,147 @@
   /* =========================================================
      CAR MOVEMENT
      ========================================================= */
+  
   const moveForward = new THREE.Vector3();
+
+  /* =========================================================
+     BUILDING COLLISION
+     Uses existing building meshes; does not alter the city.
+     ========================================================= */
+  const CAR_HALF_WIDTH = 1.125;
+  const CAR_HALF_LENGTH = 2.075;
+
+  const collisionBuildings = [];
+  const seenBuildings = new Set();
+
+  function registerBuilding(building) {
+    if (
+      !building ||
+      seenBuildings.has(building) ||
+      !building.geometry ||
+      !building.position
+    ) {
+      return;
+    }
+
+    seenBuildings.add(building);
+
+    const geometry = building.geometry;
+    let width = geometry.parameters?.width;
+    let depth = geometry.parameters?.depth;
+
+    if (!(width > 0) || !(depth > 0)) {
+      if (!geometry.boundingBox) {
+        geometry.computeBoundingBox();
+      }
+
+      const bounds = geometry.boundingBox;
+      if (!bounds) return;
+
+      width = bounds.max.x - bounds.min.x;
+      depth = bounds.max.z - bounds.min.z;
+    }
+
+    if (!(width > 0) || !(depth > 0)) return;
+
+    collisionBuildings.push({
+      mesh: building,
+      halfWidth: width * Math.abs(building.scale.x) / 2,
+      halfDepth: depth * Math.abs(building.scale.z) / 2
+    });
+  }
+
+  (track.buildings || []).forEach(registerBuilding);
+  (track.destinations || []).forEach(registerBuilding);
+
+  /* Separating-axis test: car rectangle versus building rectangle. */
+  function overlapsBuilding(x, z, carAngle, collider) {
+    const building = collider.mesh;
+
+    const bx = building.position.x;
+    const bz = building.position.z;
+    const buildingAngle = building.rotation.y || 0;
+
+    const carCos = Math.cos(carAngle);
+    const carSin = Math.sin(carAngle);
+    const buildingCos = Math.cos(buildingAngle);
+    const buildingSin = Math.sin(buildingAngle);
+
+    const dx = x - bx;
+    const dz = z - bz;
+
+    const axes = [
+      [carCos, -carSin],
+      [carSin, carCos],
+      [buildingCos, -buildingSin],
+      [buildingSin, buildingCos]
+    ];
+
+    for (const axis of axes) {
+      const ax = axis[0];
+      const az = axis[1];
+
+      const distance = Math.abs(dx * ax + dz * az);
+
+      const carRadius =
+        CAR_HALF_WIDTH * Math.abs(carCos * ax - carSin * az) +
+        CAR_HALF_LENGTH * Math.abs(carSin * ax + carCos * az);
+
+      const buildingRadius =
+        collider.halfWidth *
+          Math.abs(buildingCos * ax - buildingSin * az) +
+        collider.halfDepth *
+          Math.abs(buildingSin * ax + buildingCos * az);
+
+      if (distance >= carRadius + buildingRadius) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function canMoveTo(x, z) {
+    for (const collider of collisionBuildings) {
+      if (
+        overlapsBuilding(
+          x,
+          z,
+          car.rotation.y,
+          collider
+        )
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function moveCarWithCollision(dx, dz) {
+    let movedX = false;
+    let movedZ = false;
+
+    /* Check each axis separately so the car can slide along walls. */
+    const nextX = car.position.x + dx;
+
+    if (canMoveTo(nextX, car.position.z)) {
+      car.position.x = nextX;
+      movedX = true;
+    }
+
+    const nextZ = car.position.z + dz;
+
+    if (canMoveTo(car.position.x, nextZ)) {
+      car.position.z = nextZ;
+      movedZ = true;
+    }
+
+    /* Stop pushing into a wall if neither direction was possible. */
+    if (!movedX && !movedZ) {
+      GAME.speed = 0;
+    }
+  }
 
   function updateCar(delta, k) {
     if (GAME.keys.forward) {
@@ -1171,9 +1311,15 @@
 
     updateSteering(k);
 
-    /* FREE DRIVING: nothing pulls the car back to the road. */
-    moveForward.set(0, 0, -1).applyQuaternion(car.quaternion);
-    car.position.addScaledVector(moveForward, GAME.speed * k);
+    
+/* FREE DRIVING with building collision. */
+moveForward.set(0, 0, -1).applyQuaternion(car.quaternion);
+
+const moveX = moveForward.x * GAME.speed * k;
+const moveZ = moveForward.z * GAME.speed * k;
+
+moveCarWithCollision(moveX, moveZ);
+
 
     wheels.forEach(wheel => {
       wheel.rotation.x -= GAME.speed * 2.2 * k;
