@@ -1087,11 +1087,6 @@ function findClosestWaypoint() {
   GAME.trackIndex = closest;
 }
 
-/* =========================================================
-   STEERING (k = frame scale: 1 at 60fps, 0.5 at 120fps)
-   ========================================================= */
-function updateSteering(k) {
-
   /* =========================================================
      STEERING (k = frame scale: 1 at 60fps, 0.5 at 120fps)
      ========================================================= */
