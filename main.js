@@ -1051,11 +1051,20 @@
     updateBanner(delta);
   }
 
+  
   refreshBeaconColors();
+
+  /* Expose the game world for optional gameplay add-ons. */
+  window.CQWorld = {
+    scene,
+    car,
+    locations: LOCATIONS,
+    THREE
+  };
 
   /* =========================================================
      CLOSEST TRACK POINT (informational only)
-     ========================================================= */
+
   function findClosestWaypoint() {
     let closest = GAME.trackIndex;
     let closestDistance = Infinity;
@@ -1363,11 +1372,18 @@
     const delta = Math.min(clock.getDelta(), 0.05);
     const k = delta * 60; /* 1.0 at 60fps */
 
+    
     updateCar(delta, k);
     updateJump(k);
     checkInteractiveObjects();
     updateLap();
     updateDiscovery(delta);
+
+    /* Energy Vampire gameplay add-on. */
+    if (window.CQEnergyVampires) {
+      window.CQEnergyVampires.update(delta);
+    }
+
 
     /* City visuals frame update: skybox/backdrop follow, vinyl
        spin, billboard slides, theatre GIF. */
