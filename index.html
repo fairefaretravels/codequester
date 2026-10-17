@@ -1,9 +1,11 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#02050b">
+  <meta name="description" content="CodeQuestER — explore the city, drive, discover, and survive.">
   <title>CodeQuestER</title>
 
   <style>
@@ -18,25 +20,18 @@
 
     canvas {
       display: block;
+      touch-action: none;
     }
   </style>
 </head>
-
 <body>
   <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
   <script src="trackgenerator.js"></script>
-
-  <!-- Optional systems. Each one is guarded in main.js, so if a file
-       fails to load the driving game still runs. Order matters:
-       music -> locations (also defines CQHooks) -> city visuals. -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
-<script src="trackgenerator.js"></script>
-<script src="music.js"></script>
-<script src="locations.js"></script>
-<script src="cityvisuals.js"></script>
-<script src="main.js"></script>
-<script src="drivercontrols.js"></script>
-<script src="tapedeck.js"></script>
-  <!-- Steering wheel + radio. Needs main.js (window.CQGame) and music.js. -->
+  <script src="music.js"></script>
+  <script src="locations.js"></script>
+  <script src="cityvisuals.js"></script>
+  <script src="main.js"></script>
+  <script src="drivercontrols.js"></script>
+  <script src="tapedeck.js"></script>
 </body>
 </html>
