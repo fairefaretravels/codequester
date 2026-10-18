@@ -32,7 +32,18 @@
      "always" = wheel everywhere
      "never"  = old buttons only */
   const WHEEL_MODE = "auto";
-  const WHEEL_SIZE = 140;
+  const WHEEL_SIZE_DESKTOP = 140;
+  const WHEEL_SIZE_MOBILE = 108; /* phones, 600px wide or narrower */
+  const WHEEL_QUERY = window.matchMedia
+    ? window.matchMedia("(max-width: 600px)")
+    : null;
+
+  function currentWheelSize() {
+    const small = WHEEL_QUERY
+      ? WHEEL_QUERY.matches
+      : window.innerWidth <= 600;
+    return small ? WHEEL_SIZE_MOBILE : WHEEL_SIZE_DESKTOP;
+  }
   const MAX_TURN = (125 * Math.PI) / 180;
 
   function isTouch() {
@@ -58,7 +69,7 @@
 
     const wheel = document.createElement("div");
     wheel.style.cssText =
-      "width:" + WHEEL_SIZE + "px;height:" + WHEEL_SIZE + "px;" +
+      "width:" + currentWheelSize() + "px;height:" + currentWheelSize() + "px;" +
       "border-radius:50%;background:rgba(0,0,0,.35);" +
       "touch-action:none;pointer-events:auto;" +
       "user-select:none;-webkit-user-select:none;";
@@ -83,6 +94,21 @@
       "</g></svg>";
 
     host.appendChild(wheel);
+
+    /* keep the size right if the window crosses the 600px line */
+    function applyWheelSize() {
+      const size = currentWheelSize();
+      wheel.style.width = size + "px";
+      wheel.style.height = size + "px";
+      GAME.ui.wheelSize = size;
+    }
+    if (WHEEL_QUERY) {
+      if (WHEEL_QUERY.addEventListener) {
+        WHEEL_QUERY.addEventListener("change", applyWheelSize);
+      } else if (WHEEL_QUERY.addListener) {
+        WHEEL_QUERY.addListener(applyWheelSize);
+      }
+    }
     const rotor = wheel.querySelector("#cq-wheel-rotor");
 
     let angle = 0; /* radians, + = clockwise = right */
@@ -170,7 +196,7 @@
 
     /* tapedeck.js reads this to sit above the wheel */
     GAME.ui.wheelOn = true;
-    GAME.ui.wheelSize = WHEEL_SIZE;
+    GAME.ui.wheelSize = currentWheelSize();
   }
 
   if (

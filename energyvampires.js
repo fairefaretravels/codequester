@@ -41,11 +41,21 @@
   function save() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ cash:state.cash, ammo:state.ammo, level:state.level, owned:state.owned, activeWeapon:state.activeWeapon, kills:state.kills })); } catch (_) {}
   }
+  /* Desktop keeps the original fixed panel + shop. On screens 600px or
+     narrower both move into one compact stack under the HUD; the status
+     panel starts collapsed and the shop starts closed. */
+  const MOBILE_MQ = window.matchMedia ? window.matchMedia("(max-width: 600px)") : null;
+  const isMobile = () => MOBILE_MQ ? MOBILE_MQ.matches : window.innerWidth <= 600;
+  const PANEL_CSS_DESKTOP = "position:fixed;left:12px;top:155px;z-index:28;width:min(230px,calc(100vw - 24px));box-sizing:border-box;padding:10px 12px;border-radius:10px;font: bold 11px Arial,sans-serif;letter-spacing:.5px;color:#fff;background:rgba(4,7,13,.92);border:1px solid rgba(0,234,255,.55);box-shadow:0 0 18px rgba(0,234,255,.08);";
+  const PANEL_CSS_MOBILE = "position:relative;pointer-events:auto;min-width:150px;box-sizing:border-box;padding:6px 8px;border-radius:10px;font:bold 11px Arial,sans-serif;letter-spacing:.5px;color:#fff;background:rgba(4,7,13,.92);border:1px solid rgba(0,234,255,.55);";
+  const SHOP_CSS_DESKTOP = "position:fixed;right:12px;top:155px;z-index:35;width:min(220px,calc(100vw - 24px));box-sizing:border-box;padding:10px;border:1px solid rgba(255,43,214,.6);border-radius:10px;background:rgba(4,7,13,.94);color:#fff;font:11px Arial,sans-serif;";
+  const SHOP_CSS_MOBILE = "position:relative;pointer-events:auto;box-sizing:border-box;padding:6px 8px;border:1px solid rgba(255,43,214,.6);border-radius:10px;background:rgba(4,7,13,.94);color:#fff;font:11px Arial,sans-serif;";
+
   function makePanel() {
     const panel = document.createElement("div");
     panel.id = "cq-combat-panel";
-    panel.style.cssText = "position:fixed;left:12px;top:155px;z-index:28;width:min(230px,calc(100vw - 24px));box-sizing:border-box;padding:10px 12px;border-radius:10px;font: bold 11px Arial,sans-serif;letter-spacing:.5px;color:#fff;background:rgba(4,7,13,.92);border:1px solid rgba(0,234,255,.55);box-shadow:0 0 18px rgba(0,234,255,.08);";
-    panel.innerHTML = '<div style="display:flex;justify-content:space-between;gap:8px"><span>LEVEL <b id="cq-level">1</b></span><span>CASH $<b id="cq-cash">0</b></span></div><div style="margin-top:7px">SILVER BULLETS: <b id="cq-ammo">8</b></div><div style="margin-top:6px">WEAPON: <b id="cq-weapon">SLINGSHOT</b></div><div style="height:7px;margin-top:8px;background:#262a34;border-radius:8px;overflow:hidden"><div id="cq-energy-fill" style="height:100%;width:100%;background:#39f5d0"></div></div><div style="display:flex;justify-content:space-between;margin-top:4px"><span>ENERGY</span><span id="cq-energy">100%</span></div><div id="cq-combat-status" style="margin-top:7px;font-size:10px;line-height:1.4;color:#b8c4d5">'+state.message+'</div><div id="cq-kill-count" style="margin-top:5px;font-size:10px;color:#ff879e"></div>';
+    panel.style.cssText = PANEL_CSS_DESKTOP;
+    panel.innerHTML = '<div id="cq-status-head" style="display:none"><button type="button" id="cq-status-toggle" aria-expanded="false" aria-label="Show or hide game status" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:26px;padding:0;margin:0;border:0;background:transparent;color:#fff;font:inherit;letter-spacing:inherit;text-align:left;cursor:pointer;touch-action:manipulation"><span>GAME STATUS</span><span id="cq-energy-mini" style="margin-left:auto">100%</span><span id="cq-status-plus" style="font-size:15px;min-width:12px;text-align:center">+</span></button><div style="height:4px;margin-top:3px;background:#262a34;border-radius:4px;overflow:hidden"><div id="cq-energy-mini-fill" style="height:100%;width:100%;background:#39f5d0"></div></div></div><div id="cq-status-details"><div style="display:flex;justify-content:space-between;gap:8px"><span>LEVEL <b id="cq-level">1</b></span><span>CASH $<b id="cq-cash">0</b></span></div><div style="margin-top:7px">SILVER BULLETS: <b id="cq-ammo">8</b></div><div style="margin-top:6px">WEAPON: <b id="cq-weapon">SLINGSHOT</b></div><div style="height:7px;margin-top:8px;background:#262a34;border-radius:8px;overflow:hidden"><div id="cq-energy-fill" style="height:100%;width:100%;background:#39f5d0"></div></div><div style="display:flex;justify-content:space-between;margin-top:4px"><span>ENERGY</span><span id="cq-energy">100%</span></div><div id="cq-combat-status" style="margin-top:7px;font-size:10px;line-height:1.4;color:#b8c4d5">'+state.message+'</div><div id="cq-kill-count" style="margin-top:5px;font-size:10px;color:#ff879e"></div></div>';
     document.body.appendChild(panel); return panel;
   }
   const panel = makePanel();
@@ -67,14 +77,63 @@
   function say(text, seconds=2.1) { notice.textContent=text; notice.style.display="block"; noticeTimer=seconds; state.message=text; }
 
   const shop = document.createElement("div");
-  shop.style.cssText = "position:fixed;right:12px;top:155px;z-index:35;width:min(220px,calc(100vw - 24px));box-sizing:border-box;padding:10px;border:1px solid rgba(255,43,214,.6);border-radius:10px;background:rgba(4,7,13,.94);color:#fff;font:11px Arial,sans-serif;";
+  shop.style.cssText = SHOP_CSS_DESKTOP;
   shop.innerHTML = '<div style="font-weight:bold;letter-spacing:1.5px;margin-bottom:7px">WEAPON SHOP</div><div id="cq-shop-items"></div><button id="cq-shop-toggle" style="margin-top:7px;width:100%;padding:7px;border-radius:7px;border:1px solid #7b5cff;background:#17112b;color:#fff;font-weight:bold">HIDE SHOP</button>';
   document.body.appendChild(shop);
   const shopItems=shop.querySelector("#cq-shop-items");
-  shop.querySelector("#cq-shop-toggle").addEventListener("click",()=>{
-    const hidden=shopItems.style.display==="none"; shopItems.style.display=hidden?"block":"none";
-    shop.querySelector("#cq-shop-toggle").textContent=hidden?"HIDE SHOP":"OPEN WEAPON SHOP";
-  });
+  const shopToggle=shop.querySelector("#cq-shop-toggle");
+  const shopTitle=shop.firstElementChild;
+  let shopOpen=true, statusOpen=false, lastMobile=null;
+  function syncShop() {
+    const m=isMobile();
+    shopItems.style.display=shopOpen?"block":"none";
+    shopToggle.textContent=shopOpen?"HIDE SHOP":"OPEN WEAPON SHOP";
+    shopTitle.style.display=(m&&!shopOpen)?"none":"block";
+    shopToggle.style.marginTop=(m&&!shopOpen)?"0":"7px";
+    if(m)shop.style.width=shopOpen?"100%":"fit-content";
+  }
+  shopToggle.addEventListener("click",()=>{ shopOpen=!shopOpen; syncShop(); });
+
+  /* compact mobile stack: status panel + shop, under the HUD row */
+  const stack=document.createElement("div");
+  stack.id="cq-combat-stack";
+  stack.style.cssText="position:fixed;left:10px;top:56px;z-index:35;width:min(230px,calc(100vw - 140px));box-sizing:border-box;display:none;flex-direction:column;align-items:flex-start;gap:6px;max-height:calc(100vh - 250px);overflow-y:auto;pointer-events:none;";
+  document.body.appendChild(stack);
+
+  const statusHead=panel.querySelector("#cq-status-head");
+  const statusToggle=panel.querySelector("#cq-status-toggle");
+  const statusPlus=panel.querySelector("#cq-status-plus");
+  const statusDetails=panel.querySelector("#cq-status-details");
+  function syncStatus() {
+    const m=isMobile();
+    statusHead.style.display=m?"block":"none";
+    statusDetails.style.display=(!m||statusOpen)?"block":"none";
+    statusDetails.style.marginTop=m?"8px":"0";
+    statusPlus.textContent=statusOpen?"\u2212":"+";
+    statusToggle.setAttribute("aria-expanded",statusOpen?"true":"false");
+    if(m)panel.style.width=statusOpen?"100%":"fit-content";
+  }
+  statusToggle.addEventListener("click",()=>{ statusOpen=!statusOpen; syncStatus(); });
+
+  function applyLayout() {
+    const m=isMobile();
+    if(m!==lastMobile){ shopOpen=!m; statusOpen=false; lastMobile=m; }
+    if(m){
+      stack.style.display="flex";
+      panel.style.cssText=PANEL_CSS_MOBILE; shop.style.cssText=SHOP_CSS_MOBILE;
+      stack.appendChild(panel); stack.appendChild(shop);
+    } else {
+      stack.style.display="none";
+      panel.style.cssText=PANEL_CSS_DESKTOP; shop.style.cssText=SHOP_CSS_DESKTOP;
+      document.body.appendChild(panel); document.body.appendChild(shop);
+    }
+    syncStatus(); syncShop();
+  }
+  if(MOBILE_MQ){
+    if(MOBILE_MQ.addEventListener)MOBILE_MQ.addEventListener("change",applyLayout);
+    else if(MOBILE_MQ.addListener)MOBILE_MQ.addListener(applyLayout);
+  }
+  applyLayout();
 
   function renderShop() {
     shopItems.innerHTML="";
@@ -101,6 +160,11 @@
     $("cq-level").textContent=state.level; $("cq-cash").textContent=state.cash;
     $("cq-ammo").textContent=state.ammo; $("cq-weapon").textContent=WEAPONS[state.activeWeapon].name;
     $("cq-energy").textContent=Math.round(state.energy)+"%";
+    const miniTag=state.safe?"SAFE ":distance<13?"DANGER ":"";
+    $("cq-energy-mini").textContent=miniTag+Math.round(state.energy)+"%";
+    $("cq-energy-mini").style.color=distance<13&&!state.safe?"#ff3158":"#fff";
+    $("cq-energy-mini-fill").style.width=state.energy+"%";
+    $("cq-energy-mini-fill").style.background=state.energy<=25?"#ff3158":state.energy<=55?"#ffbd4a":"#39f5d0";
     $("cq-energy-fill").style.width=state.energy+"%";
     $("cq-energy-fill").style.background=state.energy<=25?"#ff3158":state.energy<=55?"#ffbd4a":"#39f5d0";
     $("cq-combat-status").textContent=state.safe?"SAFE ZONE — ENERGY RECHARGING":distance<13?"DANGER — DRIVE AWAY OR SHOOT":"Collect silver bullets · Finish laps for cash";

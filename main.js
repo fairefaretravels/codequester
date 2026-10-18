@@ -278,13 +278,61 @@
   /* =========================================================
      HUD
      ========================================================= */
-  const hud = document.createElement("div");
-  hud.style.cssText =
+  /* Desktop: full info panel (unchanged).
+     Mobile (600px or narrower): one compact SPEED / LAP row with a
+     + button that reveals score, boost, track, discoveries, quest
+     and the keyboard list. */
+  const HUD_MOBILE_QUERY = window.matchMedia
+    ? window.matchMedia("(max-width: 600px)")
+    : null;
+
+  function hudIsMobile() {
+    return HUD_MOBILE_QUERY
+      ? HUD_MOBILE_QUERY.matches
+      : window.innerWidth <= 600;
+  }
+
+  const HUD_DESKTOP_CSS =
     "position:fixed;top:14px;left:14px;z-index:20;" +
     "font-family:Arial,sans-serif;color:#fff;background:rgba(0,0,0,.72);" +
     "border:1px solid rgba(0,234,255,.4);padding:12px 16px;" +
     "border-radius:8px;min-width:190px;line-height:1.45;";
+
+  const HUD_MOBILE_CSS =
+    "position:fixed;top:14px;left:10px;z-index:20;box-sizing:border-box;" +
+    "max-width:calc(100vw - 140px);font-family:Arial,sans-serif;" +
+    "font-size:12px;line-height:1.35;color:#fff;" +
+    "background:rgba(0,0,0,.72);border:1px solid rgba(0,234,255,.4);" +
+    "padding:5px 6px 5px 9px;border-radius:8px;" +
+    "display:flex;flex-wrap:wrap;align-items:center;gap:6px;";
+
+  const hud = document.createElement("div");
+  hud.id = "cq-hud";
   document.body.appendChild(hud);
+
+  const hudMain = document.createElement("div");
+  hudMain.style.cssText = "flex:1 1 auto;white-space:nowrap;";
+
+  const hudToggle = document.createElement("button");
+  hudToggle.type = "button";
+  hudToggle.setAttribute("aria-label", "Show or hide HUD details");
+  hudToggle.style.cssText =
+    "display:none;width:26px;height:26px;padding:0;border-radius:7px;" +
+    "border:1px solid rgba(0,234,255,.6);background:rgba(0,0,0,.72);" +
+    "color:#fff;font:bold 16px/1 Arial,sans-serif;cursor:pointer;" +
+    "touch-action:manipulation;";
+
+  const hudDetails = document.createElement("div");
+  hudDetails.style.cssText =
+    "display:none;flex:1 1 100%;font-size:11px;line-height:1.4;" +
+    "max-height:50vh;overflow-y:auto;";
+
+  hud.appendChild(hudMain);
+  hud.appendChild(hudToggle);
+  hud.appendChild(hudDetails);
+
+  let hudOpen = false;
+  let hudMobile = hudIsMobile();
 
   const message = document.createElement("div");
   message.style.cssText =
@@ -311,35 +359,102 @@
     }
   }
 
-  let hudHTML = "";
+  let hudMainHTML = "";
+  let hudDetailsHTML = "";
 
-  /* Only touches the DOM when the text actually changes. */
-  function updateHUD() {
-    const mph = Math.round(Math.abs(GAME.speed) * 145);
+  const HUD_KEYS_HTML =
+    "W / \u2191  ACCELERATE<br>" +
+    "S / \u2193  BRAKE<br>" +
+    "A / \u2190  LEFT<br>" +
+    "D / \u2192  RIGHT<br>" +
+    "C  CAMERA VIEW<br>" +
+    "Q E R F  LOOK<br>" +
+    "M  RADIO   N  NEXT";
+
+  function hudStatsHTML() {
     const boost = GAME.boostTimer > 0 ? "ACTIVE" : "READY";
 
-    const html =
-      "<strong>CODEQUESTER</strong><br>" +
-      "SPEED: " + mph + "<br>" +
-      "LAP: " + GAME.lap + "<br>" +
+    return (
       "SCORE: " + GAME.score + "<br>" +
       "BOOST: " + boost + "<br>" +
       "TRACK: " + (GAME.trackIndex + 1) + "/" + TRACK_COUNT + "<br>" +
       "DISCOVERED: " + discoveredCount() + " / " + LOCATIONS.length + "<br>" +
-      "QUEST: " + questHudText() + "<br><br>" +
-      "W / \u2191  ACCELERATE<br>" +
-      "S / \u2193  BRAKE<br>" +
-      "A / \u2190  LEFT<br>" +
-      "D / \u2192  RIGHT<br>" +
-      "C  CAMERA VIEW<br>" +
-      "Q E R F  LOOK<br>" +
-      "M  RADIO   N  NEXT";
+      "QUEST: " + questHudText()
+    );
+  }
 
-    if (html !== hudHTML) {
-      hudHTML = html;
-      hud.innerHTML = html;
+  function syncHudToggle() {
+    hudToggle.textContent = hudOpen ? "\u2212" : "+";
+    hudToggle.setAttribute("aria-expanded", hudOpen ? "true" : "false");
+    /* an open details list sits above the combat stack */
+    hud.style.zIndex = hudMobile && hudOpen ? "36" : "20";
+  }
+
+  function applyHudLayout() {
+    hudMobile = hudIsMobile();
+    hudMainHTML = "";
+    hudDetailsHTML = "";
+    hud.style.cssText = hudMobile ? HUD_MOBILE_CSS : HUD_DESKTOP_CSS;
+    hudToggle.style.display = hudMobile ? "block" : "none";
+    hudDetails.style.display = "none";
+    syncHudToggle();
+  }
+
+  /* Only touches the DOM when the text actually changes. */
+  function updateHUD() {
+    const mph = Math.round(Math.abs(GAME.speed) * 145);
+
+    let mainHTML;
+    let detailsHTML = "";
+
+    if (hudMobile) {
+      mainHTML =
+        "<strong>SPD " + mph + "</strong>&nbsp;&nbsp;" +
+        "<strong>LAP " + GAME.lap + "</strong>";
+      if (hudOpen) {
+        detailsHTML = hudStatsHTML() + "<br><br>" + HUD_KEYS_HTML;
+      }
+    } else {
+      mainHTML =
+        "<strong>CODEQUESTER</strong><br>" +
+        "SPEED: " + mph + "<br>" +
+        "LAP: " + GAME.lap + "<br>" +
+        hudStatsHTML() + "<br><br>" +
+        HUD_KEYS_HTML;
+    }
+
+    if (mainHTML !== hudMainHTML) {
+      hudMainHTML = mainHTML;
+      hudMain.innerHTML = mainHTML;
+    }
+
+    if (detailsHTML !== hudDetailsHTML) {
+      hudDetailsHTML = detailsHTML;
+      hudDetails.innerHTML = detailsHTML;
+      hudDetails.style.display = detailsHTML ? "block" : "none";
     }
   }
+
+  hudToggle.addEventListener("click", () => {
+    hudOpen = !hudOpen;
+    syncHudToggle();
+    updateHUD();
+    hudToggle.blur();
+  });
+
+  if (HUD_MOBILE_QUERY) {
+    const onHudQueryChange = () => {
+      applyHudLayout();
+      updateHUD();
+    };
+    if (HUD_MOBILE_QUERY.addEventListener) {
+      HUD_MOBILE_QUERY.addEventListener("change", onHudQueryChange);
+    } else if (HUD_MOBILE_QUERY.addListener) {
+      HUD_MOBILE_QUERY.addListener(onHudQueryChange);
+    }
+  }
+
+  applyHudLayout();
 
   /* =========================================================
      KEYBOARD
