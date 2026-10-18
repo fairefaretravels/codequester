@@ -1,0 +1,510 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#02050b">
+  <meta name="color-scheme" content="dark">
+
+  <!-- Primary SEO -->
+  <title>CodeQuestER — Open-World Driving &amp; Discovery Game</title>
+  <meta name="description" content="Enter CodeQuestER, an immersive 3D driving game. Explore a living city, discover locations, cruise the streets, encounter traffic, and survive energy vampires while listening to the radio.">
+  <meta name="keywords" content="CodeQuestER, 3D driving game, browser game, open world driving, city exploration game, Three.js game, driving simulator, indie game, interactive city">
+  <meta name="author" content="Saneca Mack">
+  <meta name="application-name" content="CodeQuestER">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+
+  <!-- Social sharing -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="CodeQuestER — Explore. Drive. Discover. Survive.">
+  <meta property="og:description" content="Take the wheel in CodeQuestER. Explore the city, encounter traffic, discover locations, and experience a 3D driving adventure.">
+  <meta property="og:image" content="https://fairefaretravels.github.io/codequester/cq.jpg">
+  <meta property="og:image:alt" content="CodeQuestER game artwork">
+  <meta property="og:site_name" content="CodeQuestER">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CodeQuestER — Explore. Drive. Discover. Survive.">
+  <meta name="twitter:description" content="Explore a 3D city, hit the road, discover new places, and experience CodeQuestER.">
+  <meta name="twitter:image" content="https://fairefaretravels.github.io/codequester/cq.jpg">
+
+  <link rel="icon" href="./cq.jpg" type="image/jpeg">
+  <link rel="preload" as="image" href="./cq.jpg" fetchpriority="high">
+
+  <!-- Game metadata -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "CodeQuestER",
+    "description": "A browser-based 3D driving and city exploration game featuring traffic, music, locations, and energy vampire encounters.",
+    "genre": ["Driving", "Simulation", "Adventure"],
+    "gamePlatform": "Web browser",
+    "applicationCategory": "Game",
+    "image": "https://fairefaretravels.github.io/codequester/cq.jpg",
+    "author": {
+      "@type": "Person",
+      "name": "Saneca Mack"
+    },
+    "playMode": "SinglePlayer"
+  }
+  </script>
+
+  <title>CodeQuestER</title>
+
+  <style>
+    :root {
+      --background: #02050b;
+      --electric-blue: #42c9ff;
+      --white: #f5f8ff;
+      --muted: #a0aec3;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--background);
+      color: var(--white);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
+      position: relative;
+      min-height: 100%;
+    }
+
+    canvas {
+      position: relative;
+      z-index: 1;
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    /* LOADING SCREEN */
+
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: #02050b;
+      opacity: 1;
+      visibility: visible;
+      transition:
+        opacity 0.8s ease,
+        visibility 0.8s ease;
+    }
+
+    #loading-screen.finished {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .loading-art {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center;
+      opacity: 0.82;
+      animation: art-arrive 1.4s ease both;
+    }
+
+    .loading-shade {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(
+          180deg,
+          rgba(2, 5, 11, 0.12) 0%,
+          rgba(2, 5, 11, 0.18) 28%,
+          rgba(2, 5, 11, 0.77) 66%,
+          #02050b 100%
+        );
+    }
+
+    .loading-content {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: min(88%, 440px);
+      margin-top: auto;
+      margin-bottom: clamp(48px, 10vh, 110px);
+      text-align: center;
+      animation: content-arrive 0.9s ease both;
+    }
+
+    .loading-eyebrow {
+      margin-bottom: 12px;
+      color: var(--electric-blue);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.42em;
+      text-transform: uppercase;
+    }
+
+    .game-title {
+      margin: 0;
+      font-size: clamp(38px, 9vw, 68px);
+      font-weight: 900;
+      letter-spacing: -0.055em;
+      line-height: 1;
+      text-shadow: 0 4px 32px rgba(0, 0, 0, 0.8);
+    }
+
+    .game-title span {
+      color: var(--electric-blue);
+    }
+
+    .game-tagline {
+      margin: 16px 0 34px;
+      color: #e0e8f5;
+      font-size: clamp(10px, 2.6vw, 13px);
+      font-weight: 600;
+      letter-spacing: 0.19em;
+      line-height: 1.8;
+      text-transform: uppercase;
+    }
+
+    .loading-track {
+      position: relative;
+      width: 100%;
+      height: 3px;
+      overflow: hidden;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.19);
+    }
+
+    #loading-progress {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(
+        90deg,
+        #1678ff,
+        #42c9ff,
+        #ffffff
+      );
+      box-shadow: 0 0 14px rgba(66, 201, 255, 0.8);
+      transition: width 0.35s ease;
+    }
+
+    .loading-details {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      width: 100%;
+      margin-top: 13px;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    #loading-status {
+      color: var(--white);
+    }
+
+    .loading-footer {
+      margin-top: 28px;
+      color: rgba(225, 235, 250, 0.66);
+      font-size: 9px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    #start-button {
+      display: none;
+      margin-top: 25px;
+      padding: 14px 32px;
+      border: 1px solid var(--electric-blue);
+      border-radius: 3px;
+      background: var(--electric-blue);
+      color: #02050b;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    #start-button:focus-visible {
+      outline: 3px solid white;
+      outline-offset: 4px;
+    }
+
+    #loading-screen.ready #start-button {
+      display: inline-block;
+    }
+
+    #loading-screen.ready .loading-track,
+    #loading-screen.ready .loading-details {
+      display: none;
+    }
+
+    @keyframes art-arrive {
+      from {
+        opacity: 0;
+        transform: scale(1.045);
+      }
+      to {
+        opacity: 0.82;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes content-arrive {
+      from {
+        opacity: 0;
+        transform: translateY(18px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 600px) {
+      .loading-art {
+        object-position: center;
+      }
+
+      .loading-content {
+        margin-bottom: max(38px, env(safe-area-inset-bottom));
+      }
+
+      .game-tagline {
+        margin-bottom: 27px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Initial loading experience -->
+  <div
+    id="loading-screen"
+    role="status"
+    aria-label="Loading CodeQuestER"
+    aria-live="polite"
+  >
+    <img
+      class="loading-art"
+      src="./cq.jpg"
+      alt=""
+      fetchpriority="high"
+      decoding="async"
+    >
+
+    <div class="loading-shade"></div>
+
+    <div class="loading-content">
+      <div class="loading-eyebrow">The city is waiting</div>
+
+      <h1 class="game-title">
+        CodeQuest<span>ER</span>
+      </h1>
+
+      <p class="game-tagline">
+        Explore. Drive. Discover. Survive.
+      </p>
+
+      <div class="loading-track" aria-hidden="true">
+        <div id="loading-progress"></div>
+      </div>
+
+      <div class="loading-details">
+        <span id="loading-status">Initializing world</span>
+        <span id="loading-percent">0%</span>
+      </div>
+
+      <button id="start-button" type="button">
+        Enter the City
+      </button>
+
+      <div class="loading-footer">
+        A Saneca Mack Experience
+      </div>
+    </div>
+  </div>
+
+  <!-- Game engine and existing game scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
+  <script src="trackgenerator.js"></script>
+  <script src="music.js"></script>
+  <script src="locations.js"></script>
+  <script src="cityvisuals.js"></script>
+  <script src="main.js"></script>
+  <script src="traffic-npcs.js"></script>
+  <script src="energyvampires.js"></script>
+  <script src="drivercontrols.js"></script>
+  <script src="tapedeck.js"></script>
+
+  <script>
+    (() => {
+      const screen = document.getElementById("loading-screen");
+      const progress = document.getElementById("loading-progress");
+      const percent = document.getElementById("loading-percent");
+      const status = document.getElementById("loading-status");
+      const startButton = document.getElementById("start-button");
+      const artwork = document.querySelector(".loading-art");
+
+      const scripts = Array.from(document.scripts).filter(script => {
+        return script.src && !script.src.includes("index.html");
+      });
+
+      let completed = 0;
+      let gameReady = false;
+      let artReady = artwork.complete && artwork.naturalWidth > 0;
+      let closed = false;
+
+      function updateProgress() {
+        const artWeight = artReady ? 1 : 0;
+        const scriptWeight = scripts.length
+          ? completed / scripts.length
+          : 1;
+
+        const value = Math.round(
+          ((artWeight + scriptWeight) / 2) * 100
+        );
+
+        progress.style.width = value + "%";
+        percent.textContent = value + "%";
+      }
+
+      function revealGame() {
+        if (closed) return;
+        closed = true;
+
+        screen.classList.add("finished");
+
+        window.setTimeout(() => {
+          screen.remove();
+        }, 900);
+      }
+
+      function checkReady() {
+        updateProgress();
+
+        if (gameReady && artReady) {
+          progress.style.width = "100%";
+          percent.textContent = "100%";
+          status.textContent = "City ready";
+
+          screen.classList.add("ready");
+          startButton.focus({ preventScroll: true });
+        }
+      }
+
+      artwork.addEventListener("load", () => {
+        artReady = true;
+        checkReady();
+      });
+
+      artwork.addEventListener("error", () => {
+        // The game can still start if the artwork fails.
+        artReady = true;
+        checkReady();
+      });
+
+      scripts.forEach(script => {
+        // Dynamically loaded scripts are not expected here.
+        // Existing scripts execute in document order.
+        script.addEventListener("load", () => {
+          completed++;
+          checkReady();
+        });
+
+        script.addEventListener("error", () => {
+          completed++;
+          status.textContent = "Checking game systems";
+          checkReady();
+        });
+      });
+
+      // Script load events may have already fired for cached resources.
+      // The window load event provides the final readiness checkpoint.
+      window.addEventListener("load", () => {
+        completed = scripts.length;
+        gameReady = true;
+        checkReady();
+      }, { once: true });
+
+      startButton.addEventListener("click", revealGame);
+
+      // Allow the game to start with a click if a browser or script
+      // problem prevents the normal ready state from being reached.
+      window.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !closed) {
+          revealGame();
+        }
+      });
+
+      // Catch a failed external Three.js download.
+      window.addEventListener("error", event => {
+        if (event.target && event.target.tagName === "SCRIPT") {
+          status.textContent = "Some systems could not load";
+        }
+      }, true);
+
+      updateProgress();
+    })();
+  </script>
+
+  <!-- Search-engine-readable game description -->
+  <section
+    id="game-description"
+    aria-label="About CodeQuestER"
+    style="
+      position: fixed;
+      left: -10000px;
+      top: auto;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    "
+  >
+    <h2>Explore the world of CodeQuestER</h2>
+    <p>
+      CodeQuestER is a 3D browser driving game where players explore
+      a city, discover locations, navigate traffic, listen to music,
+      and encounter energy vampires. Drive through the city and
+      experience an interactive world created by Saneca Mack.
+    </p>
+    <p>
+      Game controls include W and S to accelerate and brake,
+      A and D to steer, and additional controls for the camera
+      and in-game radio.
+    </p>
+  </section>
+
+</body>
+</html>
