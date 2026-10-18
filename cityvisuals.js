@@ -28,14 +28,20 @@
   const IMAGES = "assets/images/";
 
   const ASSET = {
-    cq1: IMAGES + "cq1.jpg",
-    cq2: IMAGES + "cq2.jpg",
-    theStaticGif: IMAGES + "TheStatic.gif",
-    theStaticPng: IMAGES + "thestatic.PNG",
-    /* optional: drop an equirectangular image here to replace
-       the generated night-sky gradient */
-    skybox: "assets/city/skybox.jpg"
-  };
+  cq1: IMAGES + "cq1.jpg",
+  cq2: IMAGES + "cq2.jpg",
+
+  // Flow promotional images
+  flow1: "assets/city/1.jpg",
+  flow2: "assets/city/2.jpg",
+  flow3: "assets/city/3.jpg",
+  flow4: "assets/city/4.jpg",
+  flow5: "assets/city/5.jpg",
+
+  theStaticGif: IMAGES + "TheStatic.gif",
+  theStaticPng: IMAGES + "thestatic.PNG",
+  skybox: "assets/city/skybox.jpg"
+};
 
   const TILE_METERS = 16;
   const MAX_BILLBOARDS = 14;
@@ -821,13 +827,22 @@
 
     /* digital billboards: 3 shared materials cycling the same slides */
     S.digiSlides = [
-      adSlide("NOW PLAYING", "THE STATIC", "#ff2bd6", "#3a0b66"),
-      adSlide("RECORD STORE", "NEW DROPS", "#00eaff", "#08265c"),
-      adSlide("LIVE TONIGHT", "ENTERTAINMENT DISTRICT", "#ffb000", "#7a1500"),
-      adSlide("CODEQUESTER", "DRIVE THE CITY", "#22ff66", "#063a2a"),
-      loadOptionalTexture(ASSET.cq1, { aspect: 2 }),
-      loadOptionalTexture(ASSET.cq2, { aspect: 2 })
-    ];
+  adSlide("NOW PLAYING", "THE STATIC", "#ff2bd6", "#3a0b66"),
+  adSlide("RECORD STORE", "NEW DROPS", "#00eaff", "#08265c"),
+  adSlide("LIVE TONIGHT", "ENTERTAINMENT DISTRICT", "#ffb000", "#7a1500"),
+  adSlide("CODEQUESTER", "DRIVE THE CITY", "#22ff66", "#063a2a"),
+
+  // Existing promotional artwork — preserved
+  loadOptionalTexture(ASSET.cq1, { aspect: 2 }),
+  loadOptionalTexture(ASSET.cq2, { aspect: 2 }),
+
+  // Five Flow images
+  loadOptionalTexture(ASSET.flow1, { aspect: 2 }),
+  loadOptionalTexture(ASSET.flow2, { aspect: 2 }),
+  loadOptionalTexture(ASSET.flow3, { aspect: 2 }),
+  loadOptionalTexture(ASSET.flow4, { aspect: 2 }),
+  loadOptionalTexture(ASSET.flow5, { aspect: 2 })
+];
 
     for (let i = 0; i < 3; i++) {
       S.digiMats.push(
@@ -839,13 +854,21 @@
     }
 
     S.muralMats = [
-      signMat(graffitiTexture("CQ")),
-      signMat(graffitiTexture("NEON")),
-      signMat(graffitiTexture("ER")),
-      signMat(loadOptionalTexture(ASSET.cq1, { aspect: 1.6 })),
-      signMat(loadOptionalTexture(ASSET.cq2, { aspect: 1.6 }))
-    ];
+  signMat(graffitiTexture("CQ")),
+  signMat(graffitiTexture("NEON")),
+  signMat(graffitiTexture("ER")),
 
+  // Existing images — preserved
+  signMat(loadOptionalTexture(ASSET.cq1, { aspect: 1.6 })),
+  signMat(loadOptionalTexture(ASSET.cq2, { aspect: 1.6 })),
+
+  // Flow promotional artwork
+  signMat(loadOptionalTexture(ASSET.flow1, { aspect: 1.6 })),
+  signMat(loadOptionalTexture(ASSET.flow2, { aspect: 1.6 })),
+  signMat(loadOptionalTexture(ASSET.flow3, { aspect: 1.6 })),
+  signMat(loadOptionalTexture(ASSET.flow4, { aspect: 1.6 })),
+  signMat(loadOptionalTexture(ASSET.flow5, { aspect: 1.6 }))
+];
     S.storefrontMats = [
       signMat(storefrontTexture("#ff2bd6", "#6a0f5a", "#8a1f8a")),
       signMat(storefrontTexture("#ffb000", "#8a2a00", "#a8641a")),
