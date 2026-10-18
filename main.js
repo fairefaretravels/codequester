@@ -1169,13 +1169,20 @@
   
   refreshBeaconColors();
 
-  /* Expose the game world for optional gameplay add-ons. */
-  window.CQWorld = {
-    scene,
-    car,
-    locations: LOCATIONS,
-    THREE
-  };
+  /* =========================================================
+   CODEQUESTER — SHARED WORLD ACCESS
+   Used by traffic NPCs and optional gameplay add-ons.
+   ========================================================= */
+
+window.CQWorld = {
+  scene: scene,
+  camera: camera,
+  renderer: renderer,
+  car: car,
+  locations: LOCATIONS,
+  THREE: THREE,
+  track: waypoints
+};
 
   /* =========================================================
    CLOSEST TRACK POINT (informational only)
@@ -1640,11 +1647,16 @@ moveCarWithCollision(moveX, moveZ);
     updateLap();
     updateDiscovery(delta);
 
+    
     /* Energy Vampire gameplay add-on. */
     if (window.CQEnergyVampires) {
       window.CQEnergyVampires.update(delta);
     }
 
+    /* Traffic vehicles and walking NPCs. */
+    if (window.CQTrafficNPCs) {
+      window.CQTrafficNPCs.update(delta);
+    }
 
     /* City visuals frame update: skybox/backdrop follow, vinyl
        spin, billboard slides, theatre GIF. */
