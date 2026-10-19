@@ -1741,7 +1741,7 @@ function updateCar(delta, k) {
   /* =========================================================
      START + GAME LOOP
      ========================================================= */
-  showMessage("CODEQUESTER");
+  showMessage("Ghetto Matrix");
 
   const clock = new THREE.Clock();
 
