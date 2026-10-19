@@ -140,6 +140,21 @@ friction: 0.006,
     return;
   }
 
+   /* =========================================================
+   WORLD 2.0 — ADDITIONAL ROAD LAYER
+   Keeps the existing track and city visuals intact.
+   ========================================================= */
+
+window.CQWorld2 = null;
+
+if (window.CQWorldBuilder && window.CQWorldConfig) {
+  try {
+    window.CQWorld2 = window.CQWorldBuilder.build(scene);
+    console.log("CodeQuestER World 2.0 road layer loaded.");
+  } catch (error) {
+    console.error("CodeQuestER World 2.0 failed to load:", error);
+  }
+}
   const TRACK_COUNT = waypoints.length;
   const ROAD_WIDTH = track.laneHalfWidth * 2;
 
