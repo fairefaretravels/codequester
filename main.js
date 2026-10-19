@@ -529,8 +529,11 @@ friction: 0.006,
 
     let activePointer = null;
 
+    /* Touch fallback state (see bottom of makeButton). */
+    let touchId = null;
+
     function press(event) {
-      if (activePointer !== null) return;
+      if (activePointer !== null || touchId !== null) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -585,6 +588,64 @@ friction: 0.006,
     button.addEventListener("contextmenu", event => {
       event.preventDefault();
     });
+
+    /* ---------------------------------------------------------
+       TOUCH FALLBACK
+       If something covers the button, or the browser does not
+       deliver pointer events to it, catch the touch at the
+       document level and hit-test the button's rectangle.
+       Pointer events fire first when they work, so this only
+       takes over when they do not.
+       --------------------------------------------------------- */
+    function setDown(value) {
+      button.style.background = value
+        ? "rgba(0,100,130,.95)"
+        : "rgba(0,0,0,.88)";
+      button.style.transform = value ? "scale(.96)" : "scale(1)";
+      action(value);
+    }
+
+    function touchHits(touch) {
+      const r = button.getBoundingClientRect();
+      const pad = 6;
+      return (
+        r.width > 0 &&
+        touch.clientX >= r.left - pad &&
+        touch.clientX <= r.right + pad &&
+        touch.clientY >= r.top - pad &&
+        touch.clientY <= r.bottom + pad
+      );
+    }
+
+    document.addEventListener(
+      "touchstart",
+      event => {
+        if (activePointer !== null || touchId !== null) return;
+        for (const touch of event.changedTouches) {
+          if (touchHits(touch)) {
+            touchId = touch.identifier;
+            if (event.cancelable) event.preventDefault();
+            setDown(true);
+            return;
+          }
+        }
+      },
+      { capture: true, passive: false }
+    );
+
+    function touchEnd(event) {
+      if (touchId === null) return;
+      for (const touch of event.changedTouches) {
+        if (touch.identifier === touchId) {
+          touchId = null;
+          setDown(false);
+          return;
+        }
+      }
+    }
+
+    document.addEventListener("touchend", touchEnd, true);
+    document.addEventListener("touchcancel", touchEnd, true);
 
     return button;
   }
