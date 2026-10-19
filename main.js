@@ -627,13 +627,16 @@ friction: 0.006,
   mobile.appendChild(controlsRight);
 
   /* Shared state used by drivercontrols.js and tapedeck.js. */
-  GAME.analogSteer = null;
-  GAME.ui = {
-    mobile,
-    steerButtons: controlsLeft
-  };
+  
+GAME.analogSteer = null;
 
-  window.CQGame = GAME;
+GAME.ui = {
+  mobile: mobile,
+  steerButtons: controlsLeft
+};
+
+window.CQGame = GAME;
+
 
   /* =========================================================
      FREE-LOOK CAMERA
