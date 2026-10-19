@@ -11,7 +11,7 @@
   }
   const { scene, car, THREE } = world;
   const locations = world.locations || [];
-  const waypoints = world.waypoints || [];
+  const waypoints = world.tracks || [];
   const game = window.CQGame || {};
   const STORAGE_KEY = "codequester.combat.v1";
   const WEAPONS = {
