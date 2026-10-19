@@ -304,10 +304,17 @@
         transition-duration: 0.01ms !important;
       }
     }
+    
+/* Keep mobile driving controls hidden during the loading screen. */
+body.cq-loading #cq-mobile-controls {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
   </style>
 </head>
 
-<body>
+<body class="cq-loading">
 
   <!-- Initial loading experience -->
   <div
@@ -400,6 +407,7 @@
         percent.textContent = value + "%";
       }
 
+      
       function revealGame() {
         if (closed) return;
         closed = true;
@@ -408,53 +416,10 @@
 
         window.setTimeout(() => {
           screen.remove();
+          document.body.classList.remove("cq-loading");
         }, 900);
       }
 
-      function checkReady() {
-        updateProgress();
-
-        if (gameReady && artReady) {
-          progress.style.width = "100%";
-          percent.textContent = "100%";
-          status.textContent = "City ready";
-
-          screen.classList.add("ready");
-          startButton.focus({ preventScroll: true });
-        }
-      }
-
-      artwork.addEventListener("load", () => {
-        artReady = true;
-        checkReady();
-      });
-
-      artwork.addEventListener("error", () => {
-        // The game can still start if the artwork fails.
-        artReady = true;
-        checkReady();
-      });
-
-      scripts.forEach(script => {
-        // Dynamically loaded scripts are not expected here.
-        // Existing scripts execute in document order.
-        script.addEventListener("load", () => {
-          completed++;
-          checkReady();
-        });
-
-        script.addEventListener("error", () => {
-          completed++;
-          status.textContent = "Checking game systems";
-          checkReady();
-        });
-      });
-
-      // Script load events may have already fired for cached resources.
-      // The window load event provides the final readiness checkpoint.
-      window.addEventListener("load", () => {
-        completed = scripts.length;
-        gameReady = true;
         checkReady();
       }, { once: true });
 
