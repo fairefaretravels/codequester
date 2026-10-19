@@ -1284,6 +1284,297 @@
     );
   }
 
+     /* =======================================================
+     DRIVE-IN LOT (stage 1)
+     One thin pad (same idea as the generator's open lots)
+     south of the city. Markings are baked into ONE canvas
+     texture, so there are no extra line meshes and no
+     z-fighting. The screen faces -Z, toward the rows.
+     ======================================================= */
+  const DRIVEIN = {
+    width: 160,
+    depth: 150,
+    topY: 0.10,
+    padHeight: 0.14,
+    padCenterY: 0.03,   /* pad spans y -0.04..0.10, hides WorldGrid */
+    ppm: 12.8,          /* canvas pixels per metre */
+    rows: 6,
+    stallW: 3.6,
+    stallD: 6.5,
+    aisle: 9,
+    laneHalf: 4.5,
+    screenW: 40,
+    screenH: 22.5,
+    screenBottom: 6
+  };
+
+  /* lot sits just south of the city, centred between two
+     north-south streets so they lead straight into it */
+  function driveInSite() {
+    const T = S.track;
+    const half = T.citySize / 2;
+    const spacing = T.cityBlockSize + T.streetWidth;
+    const xIn = -half + Math.round(half / spacing) * spacing;
+    const xOut = xIn + spacing;
+    return { xIn, xOut, cx: (xIn + xOut) / 2, z0: half + 4 };
+  }
+
+  function driveInTexture(site) {
+    const D = DRIVEIN;
+    const W = Math.round(D.width * D.ppm);
+    const H = Math.round(D.depth * D.ppm);
+    const minX = site.cx - D.width / 2;
+    const px = x => (x - minX) * D.ppm;
+    const pz = z => (z - site.z0) * D.ppm;
+    const m = v => v * D.ppm;
+
+    const screenZ = site.z0 + D.depth - 8;
+    const pitch = D.stallD + D.aisle;
+    const firstFront = screenZ - 26;
+    const lanes = [site.xIn, site.xOut];
+    const cut = D.laneHalf + 1;
+    const lo = minX + 5;
+    const hi = minX + D.width - 5;
+    const segs = [
+      [lo, site.xIn - cut],
+      [site.xIn + cut, site.xOut - cut],
+      [site.xOut + cut, hi]
+    ];
+
+    const tex = canvasTexture(W, H, g => {
+      /* charcoal asphalt with light speckle */
+      g.fillStyle = "#1a1d23";
+      g.fillRect(0, 0, W, H);
+      for (let i = 0; i < 22000; i++) {
+        g.fillStyle =
+          Math.random() < 0.5
+            ? "rgba(255,255,255,0.03)"
+            : "rgba(0,0,0,0.05)";
+        g.fillRect(Math.random() * W, Math.random() * H, 2, 2);
+      }
+
+      /* parking stalls: dividers + a front line toward the screen */
+      const lineW = m(0.3);
+      g.fillStyle = "rgba(226,232,240,0.92)";
+      for (let r = 0; r < D.rows; r++) {
+        const zf = firstFront - r * pitch;
+        const zr = zf - D.stallD;
+        segs.forEach(seg => {
+          const n = Math.floor((seg[1] - seg[0]) / D.stallW);
+          if (n < 1) {
+            return;
+          }
+          const start = seg[0] + ((seg[1] - seg[0]) - n * D.stallW) / 2;
+          for (let i = 0; i <= n; i++) {
+            g.fillRect(
+              px(start + i * D.stallW) - lineW / 2,
+              pz(zr),
+              lineW,
+              m(D.stallD)
+            );
+          }
+          g.fillRect(
+            px(start) - lineW / 2,
+            pz(zf) - lineW / 2,
+            m(n * D.stallW) + lineW,
+            lineW
+          );
+        });
+      }
+
+      /* entrance / exit lane edges (dashed yellow) */
+      g.fillStyle = "rgba(255,200,40,0.8)";
+      lanes.forEach(lx => {
+        [-1, 1].forEach(side => {
+          for (let z = site.z0 + 2; z < screenZ - 20; z += 5) {
+            g.fillRect(
+              px(lx + side * D.laneHalf) - m(0.1),
+              pz(z),
+              m(0.2),
+              m(2.5)
+            );
+          }
+        });
+      });
+
+      /* entrance threshold (cyan) across both lanes + exit stop bar */
+      g.fillStyle = "rgba(0,234,255,0.85)";
+      lanes.forEach(lx => {
+        g.fillRect(
+          px(lx - D.laneHalf),
+          pz(site.z0 + 0.8),
+          m(D.laneHalf * 2),
+          m(0.4)
+        );
+      });
+      g.fillStyle = "rgba(226,232,240,0.92)";
+      g.fillRect(
+        px(site.xOut - D.laneHalf),
+        pz(site.z0 + 5),
+        m(D.laneHalf * 2),
+        m(0.5)
+      );
+
+      /* arrows: tip points to canvas-up (north) at angle 0 */
+      function arrow(x, z, angle, len) {
+        const L = m(len);
+        const shaft = m(0.35);
+        const headW = m(1.3);
+        const headL = L * 0.4;
+        g.save();
+        g.translate(px(x), pz(z));
+        g.rotate(angle);
+        g.beginPath();
+        g.moveTo(0, -L / 2);
+        g.lineTo(headW, -L / 2 + headL);
+        g.lineTo(shaft, -L / 2 + headL);
+        g.lineTo(shaft, L / 2);
+        g.lineTo(-shaft, L / 2);
+        g.lineTo(-shaft, -L / 2 + headL);
+        g.lineTo(-headW, -L / 2 + headL);
+        g.closePath();
+        g.fill();
+        g.restore();
+      }
+
+      g.fillStyle = "rgba(205,214,228,0.55)";
+
+      /* lane arrows: IN heads south (+z), OUT heads north (-z) */
+      for (let z = site.z0 + 22; z <= screenZ - 24; z += 24) {
+        arrow(site.xIn, z, Math.PI, 5);
+        arrow(site.xOut, z + 12, 0, 5);
+      }
+
+      /* one-way aisle arrows, alternating direction */
+      const aisleZs = [
+        firstFront - (D.rows - 1) * pitch - D.stallD - D.aisle / 2
+      ];
+      for (let r = 1; r < D.rows; r++) {
+        aisleZs.push(firstFront - r * pitch + D.aisle / 2);
+      }
+      aisleZs.forEach((z, a) => {
+        const dir = a % 2 === 0 ? Math.PI / 2 : -Math.PI / 2;
+        for (let x = minX + 12; x < minX + D.width - 8; x += 26) {
+          if (lanes.some(l => Math.abs(x - l) < 9)) {
+            continue;
+          }
+          arrow(x, z, dir, 4.2);
+        }
+      });
+
+      /* painted words (ENTER is flipped so it reads for a driver heading south) */
+      function label(text, x, z, color, flip) {
+        g.save();
+        g.translate(px(x), pz(z));
+        if (flip) {
+          g.rotate(Math.PI);
+        }
+        g.fillStyle = color;
+        g.font = "bold " + Math.round(m(1.9)) + "px Arial, sans-serif";
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        g.fillText(text, 0, 0);
+        g.restore();
+      }
+      label("ENTER", site.xIn, site.z0 + 11, "rgba(0,234,255,0.85)", true);
+      label("EXIT", site.xOut, site.z0 + 11, "rgba(255,43,214,0.85)", false);
+    });
+
+    tex.anisotropy = 8;
+    return tex;
+  }
+
+  function driveInScreenTexture() {
+    return canvasTexture(1024, 576, (g, w, h) => {
+      const grad = g.createRadialGradient(
+        w / 2, h / 2, h * 0.1, w / 2, h / 2, w * 0.62
+      );
+      grad.addColorStop(0, "#e8eefb");
+      grad.addColorStop(1, "#9aa7bf");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, w, h);
+    });
+  }
+
+  function dressDriveIn() {
+    const D = DRIVEIN;
+    const site = driveInSite();
+
+    /* the lot: one thin pad, markings on its top face only */
+    const tex = driveInTexture(site);
+    const top = new THREE.MeshStandardMaterial({
+      map: tex,
+      roughness: 0.92,
+      metalness: 0,
+      emissive: 0xffffff,
+      emissiveMap: tex,
+      emissiveIntensity: 0.22
+    });
+    const side = new THREE.MeshStandardMaterial({
+      color: 0x2a2e36,
+      roughness: 0.95
+    });
+    const pad = new THREE.Mesh(
+      new THREE.BoxGeometry(D.width, D.padHeight, D.depth),
+      [side, side, top, side, side, side]
+    );
+    pad.position.set(site.cx, D.padCenterY, site.z0 + D.depth / 2);
+    pad.receiveShadow = true;
+    pad.name = "DriveInLot";
+    pad.userData = { type: "driveInLot", drivable: true, collision: false };
+    place(pad);
+
+    /* screen + marquee */
+    const cx = site.cx;
+    const sz = site.z0 + D.depth - 8;
+    const sw = D.screenW;
+    const sh = D.screenH;
+    const scy = D.screenBottom + sh / 2;
+
+    const box = (mat, w, h, d, x, y, z) => {
+      const mesh = new THREE.Mesh(S.unitBox, mat);
+      mesh.scale.set(w, h, d);
+      mesh.position.set(x, y, z);
+      return place(mesh);
+    };
+    const panel = (mat, w, h, x, y, z) => {
+      const mesh = new THREE.Mesh(S.unitPlane, mat);
+      mesh.scale.set(w, h, 1);
+      mesh.position.set(x, y, z);
+      mesh.rotation.y = Math.PI; /* faces -Z, toward the parking rows */
+      return place(mesh);
+    };
+
+    const skirtH = D.screenBottom - 0.5 - D.topY;
+    box(S.frameMat, sw, skirtH, 1.0, cx, D.topY + skirtH / 2, sz);
+    box(S.frameMat, sw + 1, sh + 1, 1.2, cx, scy, sz);
+    panel(signMat(driveInScreenTexture()), sw, sh, cx, scy, sz - 0.7);
+
+    /* cyan trim along the top of the screen base */
+    box(
+      new THREE.MeshBasicMaterial({ color: 0x00eaff }),
+      sw, 0.3, 0.12, cx, D.screenBottom - 0.5, sz - 0.56
+    );
+
+    /* marquee above the screen */
+    const frameTop = D.screenBottom + sh + 0.5;
+    box(S.frameMat, 1.4, 1.2, 0.8, cx - 11, frameTop + 0.6, sz);
+    box(S.frameMat, 1.4, 1.2, 0.8, cx + 11, frameTop + 0.6, sz);
+    const mqY = frameTop + 1.2 + 2.8;
+    box(S.frameMat, 33, 5.6, 1.0, cx, mqY, sz);
+    panel(
+      signMat(
+        neonTexture(["CODEQUESTER DRIVE-IN"], "#ff2bd6", 1536, 230, "#07040f")
+      ),
+      32, 4.8, cx, mqY, sz - 0.58
+    );
+
+    console.info(
+      "CodeQuestER drive-in: x " + (cx - D.width / 2) + ".." +
+      (cx + D.width / 2) + ", z " + site.z0 + ".." + (site.z0 + D.depth) +
+      ", screen at z " + sz
+    );
+  }
   /* =======================================================
      APPLY (called once after track.generate())
      ======================================================= */
