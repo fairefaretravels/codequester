@@ -1737,6 +1737,7 @@ function updateCar(delta, k) {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
+  
   /* =========================================================
      START + GAME LOOP
      ========================================================= */
@@ -1748,16 +1749,14 @@ function updateCar(delta, k) {
     requestAnimationFrame(animate);
 
     const delta = Math.min(clock.getDelta(), 0.05);
-    const k = delta * 60; /* 1.0 at 60fps */
+    const k = delta * 60;
 
-    
     updateCar(delta, k);
     updateJump(k);
     checkInteractiveObjects();
     updateLap();
     updateDiscovery(delta);
 
-    
     /* Energy Vampire gameplay add-on. */
     if (window.CQEnergyVampires) {
       window.CQEnergyVampires.update(delta);
@@ -1768,8 +1767,7 @@ function updateCar(delta, k) {
       window.CQTrafficNPCs.update(delta);
     }
 
-    /* City visuals frame update: skybox/backdrop follow, vinyl
-       spin, billboard slides, theatre GIF. */
+    /* City visuals frame update. */
     if (window.CQCityVisuals) {
       window.CQCityVisuals.update(delta, car.position);
     }
@@ -1780,9 +1778,7 @@ function updateCar(delta, k) {
     updateMessage(delta);
     updateHUD();
 
-      updateHUD();
-
-  renderer.render(scene, camera);
+    renderer.render(scene, camera);
   }
 
   animate();
