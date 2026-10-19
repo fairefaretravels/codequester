@@ -1258,199 +1258,231 @@ function findClosestWaypoint() {
   
   const moveForward = new THREE.Vector3();
 
-  /* =========================================================
-     BUILDING COLLISION
-     Uses existing building meshes; does not alter the city.
-     ========================================================= */
-  const CAR_HALF_WIDTH = 1.125;
-  const CAR_HALF_LENGTH = 2.075;
+  
+/* =========================================================
+   BUILDING COLLISION + CAR PHYSICS
+   Preserves existing building meshes and city visuals.
+   Includes wall sliding, gradual acceleration, braking,
+   reverse, steering, wheel animation, and waypoint checks.
+   ========================================================= */
 
-  const collisionBuildings = [];
-  const seenBuildings = new Set();
+const CAR_HALF_WIDTH = 1.125;
+const CAR_HALF_LENGTH = 2.075;
 
-  function registerBuilding(building) {
+const collisionBuildings = [];
+const seenBuildings = new Set();
+
+function registerBuilding(building) {
+  if (
+    !building ||
+    seenBuildings.has(building) ||
+    !building.geometry ||
+    !building.position
+  ) {
+    return;
+  }
+
+  seenBuildings.add(building);
+
+  const geometry = building.geometry;
+  let width = geometry.parameters?.width;
+  let depth = geometry.parameters?.depth;
+
+  if (!(width > 0) || !(depth > 0)) {
+    if (!geometry.boundingBox) {
+      geometry.computeBoundingBox();
+    }
+
+    const bounds = geometry.boundingBox;
+    if (!bounds) return;
+
+    width = bounds.max.x - bounds.min.x;
+    depth = bounds.max.z - bounds.min.z;
+  }
+
+  if (!(width > 0) || !(depth > 0)) return;
+
+  collisionBuildings.push({
+    mesh: building,
+    halfWidth: width * Math.abs(building.scale.x) / 2,
+    halfDepth: depth * Math.abs(building.scale.z) / 2
+  });
+}
+
+(track.buildings || []).forEach(registerBuilding);
+(track.destinations || []).forEach(registerBuilding);
+
+/* Rectangle collision test: car versus building. */
+function overlapsBuilding(x, z, carAngle, collider) {
+  const building = collider.mesh;
+
+  const bx = building.position.x;
+  const bz = building.position.z;
+  const buildingAngle = building.rotation.y || 0;
+
+  const carCos = Math.cos(carAngle);
+  const carSin = Math.sin(carAngle);
+  const buildingCos = Math.cos(buildingAngle);
+  const buildingSin = Math.sin(buildingAngle);
+
+  const dx = x - bx;
+  const dz = z - bz;
+
+  const axes = [
+    [carCos, -carSin],
+    [carSin, carCos],
+    [buildingCos, -buildingSin],
+    [buildingSin, buildingCos]
+  ];
+
+  for (const axis of axes) {
+    const ax = axis[0];
+    const az = axis[1];
+
+    const distance = Math.abs(dx * ax + dz * az);
+
+    const carRadius =
+      CAR_HALF_WIDTH *
+        Math.abs(carCos * ax - carSin * az) +
+      CAR_HALF_LENGTH *
+        Math.abs(carSin * ax + carCos * az);
+
+    const buildingRadius =
+      collider.halfWidth *
+        Math.abs(buildingCos * ax - buildingSin * az) +
+      collider.halfDepth *
+        Math.abs(buildingSin * ax + buildingCos * az);
+
+    if (distance >= carRadius + buildingRadius) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function canMoveTo(x, z) {
+  for (const collider of collisionBuildings) {
     if (
-      !building ||
-      seenBuildings.has(building) ||
-      !building.geometry ||
-      !building.position
+      overlapsBuilding(
+        x,
+        z,
+        car.rotation.y,
+        collider
+      )
     ) {
-      return;
-    }
-
-    seenBuildings.add(building);
-
-    const geometry = building.geometry;
-    let width = geometry.parameters?.width;
-    let depth = geometry.parameters?.depth;
-
-    if (!(width > 0) || !(depth > 0)) {
-      if (!geometry.boundingBox) {
-        geometry.computeBoundingBox();
-      }
-
-      const bounds = geometry.boundingBox;
-      if (!bounds) return;
-
-      width = bounds.max.x - bounds.min.x;
-      depth = bounds.max.z - bounds.min.z;
-    }
-
-    if (!(width > 0) || !(depth > 0)) return;
-
-    collisionBuildings.push({
-      mesh: building,
-      halfWidth: width * Math.abs(building.scale.x) / 2,
-      halfDepth: depth * Math.abs(building.scale.z) / 2
-    });
-  }
-
-  (track.buildings || []).forEach(registerBuilding);
-  (track.destinations || []).forEach(registerBuilding);
-
-  /* Separating-axis test: car rectangle versus building rectangle. */
-  function overlapsBuilding(x, z, carAngle, collider) {
-    const building = collider.mesh;
-
-    const bx = building.position.x;
-    const bz = building.position.z;
-    const buildingAngle = building.rotation.y || 0;
-
-    const carCos = Math.cos(carAngle);
-    const carSin = Math.sin(carAngle);
-    const buildingCos = Math.cos(buildingAngle);
-    const buildingSin = Math.sin(buildingAngle);
-
-    const dx = x - bx;
-    const dz = z - bz;
-
-    const axes = [
-      [carCos, -carSin],
-      [carSin, carCos],
-      [buildingCos, -buildingSin],
-      [buildingSin, buildingCos]
-    ];
-
-    for (const axis of axes) {
-      const ax = axis[0];
-      const az = axis[1];
-
-      const distance = Math.abs(dx * ax + dz * az);
-
-      const carRadius =
-        CAR_HALF_WIDTH * Math.abs(carCos * ax - carSin * az) +
-        CAR_HALF_LENGTH * Math.abs(carSin * ax + carCos * az);
-
-      const buildingRadius =
-        collider.halfWidth *
-          Math.abs(buildingCos * ax - buildingSin * az) +
-        collider.halfDepth *
-          Math.abs(buildingSin * ax + buildingCos * az);
-
-      if (distance >= carRadius + buildingRadius) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  function canMoveTo(x, z) {
-    for (const collider of collisionBuildings) {
-      if (
-        overlapsBuilding(
-          x,
-          z,
-          car.rotation.y,
-          collider
-        )
-      ) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  function moveCarWithCollision(dx, dz) {
-    let movedX = false;
-    let movedZ = false;
-
-    /* Check each axis separately so the car can slide along walls. */
-    const nextX = car.position.x + dx;
-
-    if (canMoveTo(nextX, car.position.z)) {
-      car.position.x = nextX;
-      movedX = true;
-    }
-
-    const nextZ = car.position.z + dz;
-
-    if (canMoveTo(car.position.x, nextZ)) {
-      car.position.z = nextZ;
-      movedZ = true;
-    }
-
-    /* Stop pushing into a wall if neither direction was possible. */
-    if (!movedX && !movedZ) {
-      GAME.speed = 0;
+      return false;
     }
   }
 
-  function updateCar(delta, k) {
-    if (GAME.keys.forward) {
-      GAME.speed += GAME.acceleration * k;
-    }
+  return true;
+}
 
-    if (GAME.keys.backward) {
-      if (GAME.speed > 0) {
-        GAME.speed -= GAME.braking * k;
-      } else {
-        GAME.speed -= GAME.acceleration * 0.6 * k;
-      }
-    }
+/* Move on each axis separately so the car slides along walls. */
+function moveCarWithCollision(dx, dz) {
+  let movedX = false;
+  let movedZ = false;
 
-    if (!GAME.keys.forward && !GAME.keys.backward) {
-      if (GAME.speed > 0) {
-        GAME.speed = Math.max(0, GAME.speed - GAME.friction * k);
-      } else if (GAME.speed < 0) {
-        GAME.speed = Math.min(0, GAME.speed + GAME.friction * k);
-      }
-    }
+  const nextX = car.position.x + dx;
 
-    if (GAME.boostTimer > 0) {
-      GAME.boostTimer -= delta;
-      GAME.boostPower = 1.45;
+  if (canMoveTo(nextX, car.position.z)) {
+    car.position.x = nextX;
+    movedX = true;
+  }
+
+  const nextZ = car.position.z + dz;
+
+  if (canMoveTo(car.position.x, nextZ)) {
+    car.position.z = nextZ;
+    movedZ = true;
+  }
+
+  /* Stop the car if a building blocks both movement directions. */
+  if (!movedX && !movedZ) {
+    GAME.speed = 0;
+  }
+}
+
+/* =========================================================
+   CAR PHYSICS
+   ========================================================= */
+function updateCar(delta, k) {
+  /* Prevent large movement jumps after a lag spike. */
+  const safeK = Math.min(Math.max(k, 0), 3);
+
+  /* GAS: accelerate only while forward is held.
+     Do not accelerate forward while the brake is held. */
+  if (GAME.keys.forward && !GAME.keys.backward) {
+    GAME.speed += GAME.acceleration * safeK;
+  }
+
+  /* BRAKE / REVERSE */
+  if (GAME.keys.backward) {
+    if (GAME.speed > 0) {
+      GAME.speed = Math.max(
+        0,
+        GAME.speed - GAME.braking * safeK
+      );
     } else {
-      GAME.boostPower = 1;
+      GAME.speed -= GAME.acceleration * 0.6 * safeK;
     }
-
-    GAME.speed = THREE.MathUtils.clamp(
-      GAME.speed,
-      -GAME.reverseSpeed,
-      GAME.maxSpeed * GAME.boostPower
-    );
-
-    updateSteering(k);
-
-    
-/* FREE DRIVING with building collision. */
-moveForward.set(0, 0, -1).applyQuaternion(car.quaternion);
-
-const moveX = moveForward.x * GAME.speed * k;
-const moveZ = moveForward.z * GAME.speed * k;
-
-moveCarWithCollision(moveX, moveZ);
-
-
-    wheels.forEach(wheel => {
-      wheel.rotation.x -= GAME.speed * 2.2 * k;
-    });
-
-    GAME.distance += Math.abs(GAME.speed) * k;
-
-    findClosestWaypoint();
   }
+
+  /* Release both pedals: coast and slow down naturally. */
+  if (!GAME.keys.forward && !GAME.keys.backward) {
+    if (GAME.speed > 0) {
+      GAME.speed = Math.max(
+        0,
+        GAME.speed - GAME.friction * safeK
+      );
+    } else if (GAME.speed < 0) {
+      GAME.speed = Math.min(
+        0,
+        GAME.speed + GAME.friction * safeK
+      );
+    }
+  }
+
+  /* Temporary boost. */
+  if (GAME.boostTimer > 0) {
+    GAME.boostTimer = Math.max(0, GAME.boostTimer - delta);
+    GAME.boostPower = 1.45;
+  } else {
+    GAME.boostPower = 1;
+  }
+
+  /* Enforce forward and reverse speed limits. */
+  GAME.speed = THREE.MathUtils.clamp(
+    GAME.speed,
+    -GAME.reverseSpeed,
+    GAME.maxSpeed * GAME.boostPower
+  );
+
+  /* Preserve existing steering behavior. */
+  updateSteering(safeK);
+
+  /* Calculate forward movement from the car's orientation. */
+  moveForward
+    .set(0, 0, -1)
+    .applyQuaternion(car.quaternion);
+
+  const moveX = moveForward.x * GAME.speed * safeK;
+  const moveZ = moveForward.z * GAME.speed * safeK;
+
+  /* Apply movement through the existing building collision. */
+  moveCarWithCollision(moveX, moveZ);
+
+  /* Animate the wheels according to car speed. */
+  wheels.forEach(wheel => {
+    wheel.rotation.x -= GAME.speed * 2.2 * safeK;
+  });
+
+  /* Keep distance and waypoint systems running. */
+  GAME.distance += Math.abs(GAME.speed) * safeK;
+
+  findClosestWaypoint();
+}
+
 
   /* =========================================================
      ZONES, BOOSTS, RAMPS
