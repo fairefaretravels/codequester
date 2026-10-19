@@ -1783,12 +1783,6 @@ function updateCar(delta, k) {
       updateHUD();
 
   renderer.render(scene, camera);
-
-  /* Reveal mobile controls after the first rendered game frame. */
-  const mobileControls = document.getElementById("cq-mobile-controls");
-
-  if (mobileControls && mobileControls.style.visibility === "hidden") {
-    mobileControls.style.visibility = "visible";
   }
 
   animate();
