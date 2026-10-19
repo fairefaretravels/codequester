@@ -500,6 +500,7 @@ friction: 0.006,
      ========================================================= */
   const mobile = document.createElement("div");
   mobile.id = "cq-mobile-controls";
+  mobile.style.visibility = "hidden";
   mobile.style.cssText =
     "position:fixed;" +
     "bottom:calc(18px + env(safe-area-inset-bottom, 0px));" +
@@ -1780,9 +1781,16 @@ function updateCar(delta, k) {
     updateMessage(delta);
     updateHUD();
 
-    renderer.render(scene, camera);
+      updateHUD();
+
+  renderer.render(scene, camera);
+
+  /* Reveal mobile controls after the first rendered game frame. */
+  const mobileControls = document.getElementById("cq-mobile-controls");
+
+  if (mobileControls && mobileControls.style.visibility === "hidden") {
+    mobileControls.style.visibility = "visible";
   }
 
-  updateHUD();
   animate();
 })();
