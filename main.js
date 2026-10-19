@@ -500,7 +500,6 @@ friction: 0.006,
      ========================================================= */
   const mobile = document.createElement("div");
   mobile.id = "cq-mobile-controls";
-  mobile.style.visibility = "hidden";
   mobile.style.cssText =
     "position:fixed;" +
     "bottom:calc(18px + env(safe-area-inset-bottom, 0px));" +
