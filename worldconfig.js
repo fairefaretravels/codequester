@@ -38,7 +38,7 @@
       connectorWidth: 14,
       shoulderWidth: 2,
       y: 0.015,
-      color: 0x171b22,
+      color: 0x777777,
       shoulderColor: 0x333943,
       centerLineColor: 0xd7d4bf,
       edgeLineColor: 0x8d9299,
