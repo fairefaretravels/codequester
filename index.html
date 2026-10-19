@@ -375,74 +375,96 @@ body.cq-loading #cq-mobile-controls {
   <script src="drivercontrols.js"></script>
   <script src="tapedeck.js"></script>
 
-  <script>
-    (() => {
-      const screen = document.getElementById("loading-screen");
-      const progress = document.getElementById("loading-progress");
-      const percent = document.getElementById("loading-percent");
-      const status = document.getElementById("loading-status");
-      const startButton = document.getElementById("start-button");
-      const artwork = document.querySelector(".loading-art");
+  
+<script>
+(() => {
+  const screen = document.getElementById("loading-screen");
+  const progress = document.getElementById("loading-progress");
+  const percent = document.getElementById("loading-percent");
+  const status = document.getElementById("loading-status");
+  const startButton = document.getElementById("start-button");
+  const artwork = document.querySelector(".loading-art");
 
-      const scripts = Array.from(document.scripts).filter(script => {
-        return script.src && !script.src.includes("index.html");
-      });
+  if (!screen || !progress || !percent || !status || !startButton) {
+    console.error("CodeQuestER: Loading screen elements are missing.");
+    return;
+  }
 
-      let completed = 0;
-      let gameReady = false;
-      let artReady = artwork.complete && artwork.naturalWidth > 0;
-      let closed = false;
+  document.body.classList.add("cq-loading");
 
-      function updateProgress() {
-        const artWeight = artReady ? 1 : 0;
-        const scriptWeight = scripts.length
-          ? completed / scripts.length
-          : 1;
+  let gameReady = false;
+  let artReady = !artwork ||
+    (artwork.complete && artwork.naturalWidth > 0);
+  let closed = false;
 
-        const value = Math.round(
-          ((artWeight + scriptWeight) / 2) * 100
-        );
+  function updateProgress(value, message) {
+    progress.style.width = value + "%";
+    percent.textContent = value + "%";
+    if (message) status.textContent = message;
+  }
 
-        progress.style.width = value + "%";
-        percent.textContent = value + "%";
-      }
+  function checkReady() {
+    if (gameReady && artReady) {
+      updateProgress(100, "City ready");
+      screen.classList.add("ready");
+    }
+  }
 
-      
-      function revealGame() {
-        if (closed) return;
-        closed = true;
+  function revealGame() {
+    if (closed) return;
+    closed = true;
 
-        screen.classList.add("finished");
+    screen.classList.add("finished");
 
-        window.setTimeout(() => {
-          screen.remove();
-          document.body.classList.remove("cq-loading");
-        }, 900);
-      }
+    window.setTimeout(() => {
+      screen.remove();
+      document.body.classList.remove("cq-loading");
+    }, 900);
+  }
 
-        checkReady();
-      }, { once: true });
+  if (artwork && !artReady) {
+    artwork.addEventListener("load", () => {
+      artReady = true;
+      checkReady();
+    }, { once: true });
 
-      startButton.addEventListener("click", revealGame);
+    artwork.addEventListener("error", () => {
+      artReady = true;
+      checkReady();
+    }, { once: true });
+  }
 
-      // Allow the game to start with a click if a browser or script
-      // problem prevents the normal ready state from being reached.
-      window.addEventListener("keydown", event => {
-        if (event.key === "Escape" && !closed) {
-          revealGame();
-        }
-      });
+  updateProgress(10, "Initializing world");
 
-      // Catch a failed external Three.js download.
-      window.addEventListener("error", event => {
-        if (event.target && event.target.tagName === "SCRIPT") {
-          status.textContent = "Some systems could not load";
-        }
-      }, true);
+  if (document.readyState === "complete") {
+    gameReady = true;
+    artReady = true;
+    checkReady();
+  } else {
+    window.addEventListener("load", () => {
+      gameReady = true;
+      artReady = true;
+      checkReady();
+    }, { once: true });
+  }
 
-      updateProgress();
-    })();
-  </script>
+  startButton.addEventListener("click", revealGame);
+
+  window.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !closed && gameReady) {
+      revealGame();
+    }
+  });
+
+  window.addEventListener("error", event => {
+    if (event.target && event.target.tagName === "SCRIPT") {
+      console.error("CodeQuestER: Script failed:", event.target.src);
+      status.textContent = "Some systems could not load";
+    }
+  }, true);
+})();
+</script>
+
 
   <!-- Search-engine-readable game description -->
   <section
