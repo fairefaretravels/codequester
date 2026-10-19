@@ -1,17 +1,33 @@
 
 /* =========================================================
    CODEQUESTER — TRAFFIC & WALKING NPCs
-   Plain JavaScript — Three.js r156
-   Requires window.CQWorld from main.js.
+   Three.js r156 | Plain JavaScript | No ES modules
+
+   Requires:
+     - Three.js loaded first
+     - main.js publishing window.CQWorld
+     - window.CQWorld.track containing waypoint objects
+
+   Features:
+     - 10 moving traffic vehicles
+     - 8 animated pedestrians
+     - Smooth waypoint movement and road offsets
+     - Safe initialization and retry if the world isn't ready
+     - No changes to player driving physics or camera
    ========================================================= */
 
 (function () {
   "use strict";
 
-  const THREE = window.THREE;
+  /* ---------------------------------------------------------
+     CONFIGURATION
+     --------------------------------------------------------- */
+
+  const THREE_LIB = window.THREE;
 
   const TRAFFIC_COUNT = 10;
   const PEDESTRIAN_COUNT = 8;
+
   const ROAD_OFFSET = 4.1;
   const WALK_OFFSET = 9.5;
 
@@ -20,29 +36,53 @@
   let pedestrians = [];
   let initialized = false;
 
-  function makeMaterial(color, roughness = 0.8) {
-    return new THREE.MeshStandardMaterial({
-      color,
-      roughness
+  /* ---------------------------------------------------------
+     MATERIALS AND MESH HELPERS
+     --------------------------------------------------------- */
+
+  function makeMaterial(color, roughness) {
+    return new THREE_LIB.MeshStandardMaterial({
+      color: color,
+      roughness: roughness === undefined ? 0.8 : roughness
     });
   }
 
-  function makeBox(parent, width, height, depth, material, x, y, z) {
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(width, height, depth),
+  function makeBox(
+    parent,
+    width,
+    height,
+    depth,
+    material,
+    x,
+    y,
+    z
+  ) {
+    const mesh = new THREE_LIB.Mesh(
+      new THREE_LIB.BoxGeometry(width, height, depth),
       material
     );
 
     mesh.position.set(x, y, z);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+
     parent.add(mesh);
 
     return mesh;
   }
 
+  function validPoint(point) {
+    return !!point &&
+      Number.isFinite(point.x) &&
+      Number.isFinite(point.z);
+  }
+
+  /* ---------------------------------------------------------
+     TRAFFIC VEHICLES
+     --------------------------------------------------------- */
+
   function makeTrafficCar(index) {
-    const group = new THREE.Group();
+    const group = new THREE_LIB.Group();
 
     const colors = [
       0xc62828,
@@ -65,12 +105,14 @@
     ];
 
     const type = types[index % types.length];
+
     const paint = makeMaterial(colors[index % colors.length]);
     const glass = makeMaterial(0x263744, 0.35);
     const tire = makeMaterial(0x171717);
-    const light = makeMaterial(0xffe8a3);
-    const tailLight = makeMaterial(0xd51e25);
+    const headlights = makeMaterial(0xffe8a3);
+    const tailLights = makeMaterial(0xd51e25);
 
+    // Main body.
     makeBox(
       group,
       type.width,
@@ -82,6 +124,7 @@
       0
     );
 
+    // Cabin and windows.
     makeBox(
       group,
       type.width * 0.76,
@@ -93,54 +136,78 @@
       -0.15
     );
 
-    // Four wheels
-    for (const x of [-1, 1]) {
-      for (const z of [-1, 1]) {
-        const wheel = new THREE.Mesh(
-          new THREE.BoxGeometry(0.22, 0.48, 0.72),
+    // Four wheels.
+    for (const xSide of [-1, 1]) {
+      for (const zSide of [-1, 1]) {
+        const wheel = new THREE_LIB.Mesh(
+          new THREE_LIB.BoxGeometry(0.22, 0.48, 0.72),
           tire
         );
 
         wheel.position.set(
-          x * (type.width / 2),
+          xSide * (type.width / 2),
           0.42,
-          z * (type.length * 0.29)
+          zSide * (type.length * 0.29)
         );
 
         group.add(wheel);
       }
     }
 
-    // Front lights and rear lights.
-    for (const x of [-0.58, 0.58]) {
+    // Front headlights and rear lights.
+    for (const xSide of [-0.58, 0.58]) {
       makeBox(
-        group, 0.25, 0.16, 0.08,
-        light, x, 0.72, -type.length / 2 - 0.02
+        group,
+        0.25,
+        0.16,
+        0.08,
+        headlights,
+        xSide,
+        0.72,
+        -type.length / 2 - 0.02
       );
 
       makeBox(
-        group, 0.25, 0.16, 0.08,
-        tailLight, x, 0.72, type.length / 2 + 0.02
+        group,
+        0.25,
+        0.16,
+        0.08,
+        tailLights,
+        xSide,
+        0.72,
+        type.length / 2 + 0.02
       );
     }
 
     world.scene.add(group);
 
+    const startingWaypoint = Math.floor(
+      (index / TRAFFIC_COUNT) * world.track.length
+    );
+
     return {
       mesh: group,
-      waypoint: Math.floor(
-        (index / TRAFFIC_COUNT) * world.track.length
-      ),
+      progress: startingWaypoint,
       offset: index % 2 === 0 ? ROAD_OFFSET : -ROAD_OFFSET,
       speed: 0.65 + (index % 4) * 0.12,
-      type
+      type: type
     };
   }
 
-  function makePedestrian(index) {
-    const group = new THREE.Group();
+  /* ---------------------------------------------------------
+     PEDESTRIANS
+     --------------------------------------------------------- */
 
-    const skinColors = [0x8d5524, 0xc68642, 0xf1c27d, 0x5c3830];
+  function makePedestrian(index) {
+    const group = new THREE_LIB.Group();
+
+    const skinColors = [
+      0x8d5524,
+      0xc68642,
+      0xf1c27d,
+      0x5c3830
+    ];
+
     const shirtColors = [
       0x2b4c7e,
       0x8f3030,
@@ -149,105 +216,229 @@
       0x80633d
     ];
 
-    const skin = makeMaterial(skinColors[index % skinColors.length]);
-    const shirt = makeMaterial(shirtColors[index % shirtColors.length]);
-    const pants = makeMaterial(index % 2 ? 0x262b35 : 0x353535);
+    const skin = makeMaterial(
+      skinColors[index % skinColors.length]
+    );
+
+    const shirt = makeMaterial(
+      shirtColors[index % shirtColors.length]
+    );
+
+    const pants = makeMaterial(
+      index % 2 ? 0x262b35 : 0x353535
+    );
+
     const shoes = makeMaterial(0x171717);
 
-    makeBox(group, 0.48, 0.75, 0.27, shirt, 0, 1.25, 0);
+    // Torso.
+    makeBox(
+      group,
+      0.48,
+      0.75,
+      0.27,
+      shirt,
+      0,
+      1.25,
+      0
+    );
 
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.19, 12, 10),
+    // Head.
+    const head = new THREE_LIB.Mesh(
+      new THREE_LIB.SphereGeometry(0.19, 12, 10),
       skin
     );
 
     head.position.set(0, 1.8, 0);
     group.add(head);
 
+    // Legs.
     const leftLeg = makeBox(
-      group, 0.17, 0.55, 0.18,
-      pants, -0.13, 0.6, 0
+      group,
+      0.17,
+      0.55,
+      0.18,
+      pants,
+      -0.13,
+      0.6,
+      0
     );
 
     const rightLeg = makeBox(
-      group, 0.17, 0.55, 0.18,
-      pants, 0.13, 0.6, 0
+      group,
+      0.17,
+      0.55,
+      0.18,
+      pants,
+      0.13,
+      0.6,
+      0
     );
 
+    // Arms.
     const leftArm = makeBox(
-      group, 0.14, 0.55, 0.16,
-      skin, -0.34, 1.25, 0
+      group,
+      0.14,
+      0.55,
+      0.16,
+      skin,
+      -0.34,
+      1.25,
+      0
     );
 
     const rightArm = makeBox(
-      group, 0.14, 0.55, 0.16,
-      skin, 0.34, 1.25, 0
+      group,
+      0.14,
+      0.55,
+      0.16,
+      skin,
+      0.34,
+      1.25,
+      0
+    );
+
+    // Shoes.
+    makeBox(
+      group,
+      0.2,
+      0.12,
+      0.3,
+      shoes,
+      -0.13,
+      0.3,
+      -0.04
     );
 
     makeBox(
-      group, 0.2, 0.12, 0.3,
-      shoes, -0.13, 0.3, -0.04
-    );
-
-    makeBox(
-      group, 0.2, 0.12, 0.3,
-      shoes, 0.13, 0.3, -0.04
+      group,
+      0.2,
+      0.12,
+      0.3,
+      shoes,
+      0.13,
+      0.3,
+      -0.04
     );
 
     world.scene.add(group);
 
+    const startingWaypoint = Math.floor(
+      (index / PEDESTRIAN_COUNT) * world.track.length
+    );
+
     return {
       mesh: group,
-      waypoint: Math.floor(
-        (index / PEDESTRIAN_COUNT) * world.track.length
-      ),
+      progress: startingWaypoint,
       offset: index % 2 === 0 ? WALK_OFFSET : -WALK_OFFSET,
       speed: 0.45 + (index % 3) * 0.12,
       phase: index * 1.7,
-      leftLeg,
-      rightLeg,
-      leftArm,
-      rightArm
+      leftLeg: leftLeg,
+      rightLeg: rightLeg,
+      leftArm: leftArm,
+      rightArm: rightArm
     };
   }
 
-  function placeOnTrack(actor, offset) {
+  /* ---------------------------------------------------------
+     SMOOTH TRACK POSITIONING
+
+     IMPORTANT:
+     Progress can be fractional. We interpolate between
+     neighboring points instead of using a fractional array
+     index, which would return undefined and break the update.
+     --------------------------------------------------------- */
+
+  function placeOnTrack(actor) {
+    if (!world || !world.track) return;
+
     const points = world.track;
     const count = points.length;
 
-    const i = ((actor.waypoint % count) + count) % count;
-    const current = points[i];
-    const next = points[(i + 1) % count];
+    if (count < 2) return;
+
+    // Normalize progress and find the two surrounding points.
+    let progress = actor.progress % count;
+
+    if (progress < 0) {
+      progress += count;
+    }
+
+    const index = Math.floor(progress);
+    const nextIndex = (index + 1) % count;
+    const fraction = progress - index;
+
+    const current = points[index];
+    const next = points[nextIndex];
+
+    if (!validPoint(current) || !validPoint(next)) {
+      return;
+    }
 
     const dx = next.x - current.x;
     const dz = next.z - current.z;
-    const length = Math.sqrt(dx * dx + dz * dz) || 1;
+    const length = Math.sqrt(dx * dx + dz * dz);
 
-    // Offset from the road centerline.
+    if (!Number.isFinite(length) || length < 0.0001) {
+      actor.mesh.position.set(
+        current.x,
+        Number.isFinite(current.y) ? current.y : 0,
+        current.z
+      );
+      return;
+    }
+
+    // Interpolate between waypoints for smooth movement.
+    const x = current.x + dx * fraction;
+    const z = current.z + dz * fraction;
+
+    // Offset sideways from the centerline.
+    const sideX = dz / length;
+    const sideZ = -dx / length;
+
     actor.mesh.position.set(
-      current.x + (dz / length) * offset,
-      0,
-      current.z - (dx / length) * offset
+      x + sideX * actor.offset,
+      Number.isFinite(current.y) ? current.y : 0,
+      z + sideZ * actor.offset
     );
 
-    // Vehicles face forward along the waypoint direction.
+    // Face the direction of travel.
     actor.mesh.rotation.y = Math.atan2(-dx, -dz);
   }
+
+  /* ---------------------------------------------------------
+     INITIALIZATION
+     --------------------------------------------------------- */
 
   function init() {
     if (initialized) return true;
 
+    // Re-read the world in case main.js initialized after
+    // this file was loaded.
     world = window.CQWorld;
 
+    if (!THREE_LIB) {
+      console.warn(
+        "CodeQuestER traffic: Three.js is not available."
+      );
+      return false;
+    }
+
     if (
-      !THREE ||
       !world ||
       !world.scene ||
-      !world.track ||
+      !Array.isArray(world.track) ||
       world.track.length < 2
     ) {
+      return false;
+    }
+
+    // Avoid creating NPCs if the initial waypoints are invalid.
+    if (
+      !validPoint(world.track[0]) ||
+      !world.track.some(validPoint)
+    ) {
       console.warn(
-        "CodeQuestER traffic: CQWorld or track waypoints are missing."
+        "CodeQuestER traffic: Track waypoints are invalid."
       );
       return false;
     }
@@ -255,30 +446,57 @@
     cars = [];
     pedestrians = [];
 
-    for (let i = 0; i < TRAFFIC_COUNT; i++) {
-      const car = makeTrafficCar(i);
-      placeOnTrack(car, car.offset);
-      cars.push(car);
+    try {
+      for (let i = 0; i < TRAFFIC_COUNT; i++) {
+        const car = makeTrafficCar(i);
+        placeOnTrack(car);
+        cars.push(car);
+      }
+
+      for (let i = 0; i < PEDESTRIAN_COUNT; i++) {
+        const person = makePedestrian(i);
+        placeOnTrack(person);
+        pedestrians.push(person);
+      }
+
+      initialized = true;
+
+      console.log(
+        "CodeQuestER traffic initialized:",
+        cars.length,
+        "cars and",
+        pedestrians.length,
+        "pedestrians."
+      );
+
+      return true;
+    } catch (error) {
+      // Remove partially created NPCs if setup fails.
+      for (const actor of cars.concat(pedestrians)) {
+        if (actor.mesh && actor.mesh.parent) {
+          actor.mesh.parent.remove(actor.mesh);
+        }
+      }
+
+      cars = [];
+      pedestrians = [];
+      initialized = false;
+
+      console.error(
+        "CodeQuestER traffic initialization failed:",
+        error
+      );
+
+      return false;
     }
-
-    for (let i = 0; i < PEDESTRIAN_COUNT; i++) {
-      const person = makePedestrian(i);
-      placeOnTrack(person, person.offset);
-      pedestrians.push(person);
-    }
-
-    initialized = true;
-
-    console.log(
-      "CodeQuestER traffic initialized:",
-      cars.length,
-      "cars and",
-      pedestrians.length,
-      "pedestrians."
-    );
-
-    return true;
   }
+
+  /* ---------------------------------------------------------
+     FRAME UPDATE
+
+     main.js can call this every frame. If the world is not
+     ready yet, initialization is retried on later frames.
+     --------------------------------------------------------- */
 
   function update(delta) {
     if (!initialized) {
@@ -286,21 +504,29 @@
       return;
     }
 
-    const points = world.track;
-    const count = points.length;
-
-    for (const car of cars) {
-      car.waypoint =
-        (car.waypoint + car.speed * delta) % count;
-
-      placeOnTrack(car, car.offset);
+    if (!world || !world.track || world.track.length < 2) {
+      return;
     }
 
-    for (const person of pedestrians) {
-      person.waypoint =
-        (person.waypoint + person.speed * delta) % count;
+    // Protect against invalid frame times.
+    if (!Number.isFinite(delta) || delta <= 0) {
+      return;
+    }
 
-      placeOnTrack(person, person.offset);
+    const count = world.track.length;
+
+    // Move traffic.
+    for (const car of cars) {
+      car.progress = (car.progress + car.speed * delta) % count;
+      placeOnTrack(car);
+    }
+
+    // Move pedestrians and animate their limbs.
+    for (const person of pedestrians) {
+      person.progress =
+        (person.progress + person.speed * delta) % count;
+
+      placeOnTrack(person);
 
       person.phase += delta * 5;
 
@@ -308,15 +534,26 @@
 
       person.leftLeg.rotation.x = swing;
       person.rightLeg.rotation.x = -swing;
+
       person.leftArm.rotation.x = -swing * 0.7;
       person.rightArm.rotation.x = swing * 0.7;
     }
   }
 
+  /* ---------------------------------------------------------
+     PUBLIC API
+     --------------------------------------------------------- */
+
   window.CQTrafficNPCs = {
-    init,
-    update
+    init: init,
+    update: update
   };
 
+  // Try immediately. If main.js has not finished, update()
+  // will retry when the game loop calls it.
   init();
+
+  // Also support a world-ready event if main.js dispatches it.
+  window.addEventListener("cq:world-ready", init);
+
 })();
