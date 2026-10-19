@@ -494,67 +494,145 @@ friction: 0.006,
     }
   });
 
+
   /* =========================================================
-     MOBILE CONTROLS
+     MOBILE CONTROLS — TOUCH-SAFE REPAIR
      ========================================================= */
   const mobile = document.createElement("div");
+  mobile.id = "cq-mobile-controls";
   mobile.style.cssText =
-    "position:fixed;bottom:20px;left:0;right:0;z-index:25;display:flex;" +
-    "justify-content:space-between;padding:0 18px;pointer-events:none;";
+    "position:fixed;" +
+    "bottom:calc(18px + env(safe-area-inset-bottom, 0px));" +
+    "left:0;right:0;z-index:10000;" +
+    "display:flex;justify-content:space-between;" +
+    "align-items:flex-end;box-sizing:border-box;" +
+    "padding:0 12px;pointer-events:none;" +
+    "isolation:isolate;";
+
   document.body.appendChild(mobile);
 
   function makeButton(label, action) {
     const button = document.createElement("button");
+    button.type = "button";
     button.textContent = label;
+    button.setAttribute("aria-label", label);
+
     button.style.cssText =
-      "width:72px;height:58px;border:1px solid rgba(0,234,255,.6);" +
-      "border-radius:12px;background:rgba(0,0,0,.72);color:#fff;" +
-      "font-size:18px;font-weight:bold;touch-action:none;" +
-      "pointer-events:auto;";
+      "width:68px;height:60px;box-sizing:border-box;" +
+      "border:2px solid rgba(0,234,255,.8);" +
+      "border-radius:14px;background:rgba(0,0,0,.88);" +
+      "color:#fff;font-size:13px;font-weight:bold;" +
+      "touch-action:none;pointer-events:auto;" +
+      "user-select:none;-webkit-user-select:none;" +
+      "-webkit-tap-highlight-color:transparent;" +
+      "position:relative;z-index:10001;";
+
+    let activePointer = null;
 
     function press(event) {
+      if (activePointer !== null) return;
+
       event.preventDefault();
+      event.stopPropagation();
+
+      activePointer = event.pointerId;
+
+      try {
+        button.setPointerCapture(event.pointerId);
+      } catch (error) {
+        /* Continue if pointer capture is unavailable. */
+      }
+
+      button.style.background = "rgba(0,100,130,.95)";
+      button.style.transform = "scale(.96)";
       action(true);
     }
+
     function release(event) {
-      event.preventDefault();
+      if (activePointer === null) return;
+
+      if (
+        event.pointerId !== undefined &&
+        event.pointerId !== activePointer
+      ) {
+        return;
+      }
+
+      const pointer = activePointer;
+      activePointer = null;
+
+      if (event.cancelable) event.preventDefault();
+
+      button.style.background = "rgba(0,0,0,.88)";
+      button.style.transform = "scale(1)";
       action(false);
+
+      try {
+        if (button.hasPointerCapture(pointer)) {
+          button.releasePointerCapture(pointer);
+        }
+      } catch (error) {
+        /* The input has already been released. */
+      }
     }
 
-    button.addEventListener("pointerdown", press);
-    button.addEventListener("pointerup", release);
+    button.addEventListener("pointerdown", press, { passive: false });
+    button.addEventListener("pointerup", release, { passive: false });
     button.addEventListener("pointercancel", release);
-    button.addEventListener("pointerleave", release);
+    button.addEventListener("lostpointercapture", release);
+
+    /* Prevent browser focus behavior from interfering with taps. */
+    button.addEventListener("contextmenu", event => {
+      event.preventDefault();
+    });
+
     return button;
   }
 
   const controlsLeft = document.createElement("div");
-  controlsLeft.style.cssText = "display:flex;gap:8px;";
+  controlsLeft.style.cssText =
+    "display:flex;gap:7px;align-items:flex-end;" +
+    "pointer-events:none;";
+
   controlsLeft.appendChild(
-    makeButton("LEFT", value => { GAME.keys.left = value; })
+    makeButton("LEFT", value => {
+      GAME.keys.left = value;
+    })
   );
+
   controlsLeft.appendChild(
-    makeButton("RIGHT", value => { GAME.keys.right = value; })
+    makeButton("RIGHT", value => {
+      GAME.keys.right = value;
+    })
   );
 
   const controlsRight = document.createElement("div");
-  controlsRight.style.cssText = "display:flex;gap:8px;";
+  controlsRight.style.cssText =
+    "display:flex;gap:7px;align-items:flex-end;" +
+    "pointer-events:none;";
+
   controlsRight.appendChild(
-    makeButton("BRAKE", value => { GAME.keys.backward = value; })
+    makeButton("BRAKE", value => {
+      GAME.keys.backward = value;
+    })
   );
+
   controlsRight.appendChild(
-    makeButton("GAS", value => { GAME.keys.forward = value; })
+    makeButton("GAS", value => {
+      GAME.keys.forward = value;
+    })
   );
 
   mobile.appendChild(controlsLeft);
   mobile.appendChild(controlsRight);
 
-  /* Exposed for drivercontrols.js (steering wheel) and tapedeck.js. */
+  /* Shared state used by drivercontrols.js and tapedeck.js. */
   GAME.analogSteer = null;
   GAME.ui = {
     mobile,
     steerButtons: controlsLeft
   };
+
   window.CQGame = GAME;
 
   /* =========================================================
